@@ -252,6 +252,15 @@ the isolated baseline-then-downgrade commits made for this trial (see git log). 
 the `SDK 57` column values into `apps/mobile/package.json` and re-run `pnpm install` — do not
 re-derive the peer set from memory, that's the expensive part this table exists to skip.
 
+**`@react-navigation/native` addendum (G-2c, Darryl):** `src/app/_layout.tsx` has always imported
+`ThemeProvider`/`DarkTheme`/`DefaultTheme` from `@react-navigation/native`, but it was never a
+direct dependency at SDK 57 either — it only resolved transitively via expo-router. Made explicit
+at `^7.3.18` (the SDK 54 matrix's version, via `expo install`) as a phantom-dependency fix, not a
+version bump. **This means it is not in the table below and reverting to SDK 57 does not restore
+it from any prior pin** — after restoring the SDK 57 column, run
+`npx expo install @react-navigation/native` again to pick up whatever version the SDK 57 matrix
+wants; don't reuse `^7.3.18`.
+
 | Package | SDK 57 (baseline) | SDK 54 (trial) |
 |---|---|---|
 | expo | ~57.0.19 | ~54.0.37 |
