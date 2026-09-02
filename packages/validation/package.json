@@ -1,0 +1,22 @@
+{
+  "name": "@gainly/validation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./env": "./src/env.ts"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@gainly/config": "workspace:*",
+    "@types/node": "26.3.0",
+    "typescript": "7.0.2"
+  }
+}

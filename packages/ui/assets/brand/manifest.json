@@ -1,0 +1,39 @@
+{
+  "generatedFrom": "C:\\Users\\ResolutAI\\Documents\\gym\\Gainly-logo.png",
+  "sourceDimensions": {
+    "width": 1254,
+    "height": 1254
+  },
+  "palette": {
+    "charcoal": "#293034",
+    "gradientDarkStop": "#1AAE2C",
+    "gradientLightStop": "#A3E00B",
+    "gradientAngleDeg": 40,
+    "cssGradient": "linear-gradient(40deg, #1AAE2C 0%, #A3E00B 100%)"
+  },
+  "contrastReport": {
+    "charcoal on white": "13.40",
+    "charcoal on dark-bg #0F1211": "1.41",
+    "gradientDarkStop on white": "2.94",
+    "gradientLightStop on white": "1.59",
+    "gradientDarkStop on dark-bg #0F1211": "6.40",
+    "gradientLightStop on dark-bg #0F1211": "11.86",
+    "light-substitute #EDEFEC on dark-bg #0F1211": "16.29"
+  },
+  "files": [
+    "android-adaptive-background-432.png",
+    "android-adaptive-foreground-432.png",
+    "app-icon-ios-1024.png",
+    "apple-touch-icon-180.png",
+    "favicon-16.png",
+    "favicon-32.png",
+    "favicon-48.png",
+    "lockup-horizontal-dark-bg.png",
+    "lockup-horizontal-transparent.png",
+    "lockup-stacked-dark-bg.png",
+    "lockup-stacked-transparent.png",
+    "mark-dark-bg.png",
+    "mark-transparent.png",
+    "splash-mark-1200.png"
+  ]
+}
