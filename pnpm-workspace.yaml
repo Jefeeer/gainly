@@ -3,6 +3,8 @@ packages:
   - "packages/*"
 allowBuilds:
   unrs-resolver: true
+# SDK 57 versions below are the revert path for the temporary SDK 54 trial (G-16) - do not remove
+# until the human confirms SDK 57 is back for good. See docs/scaffold-handover.md for the full table.
 minimumReleaseAgeExclude:
   - '@expo/cli@57.0.21'
   - '@expo/fingerprint@0.20.12'

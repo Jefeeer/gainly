@@ -2,7 +2,7 @@
   "name": "gainly-scripts",
   "private": true,
   "type": "module",
-  "description": "One-off asset-generation scripts. Not a pnpm workspace member (see pnpm-workspace.yaml) - installed with plain npm so it never touches the root lockfile.",
+  "description": "One-off asset-generation scripts. Not a pnpm workspace member (see pnpm-workspace.yaml) - installed via `pnpm install --ignore-workspace` so sharp (a heavy native binary) never touches the root lockfile.",
   "scripts": {
     "brand-assets": "node generate-brand-assets.mjs"
   },
