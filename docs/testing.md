@@ -199,23 +199,31 @@ Unit tests in `packages/validation` or `packages/utils` (wherever conversion liv
 - `1RM = weight * (1 + reps/30)` — exact-value unit tests for known inputs (e.g. 100kg×5reps → 116.67).
 - reps=0 edge case (should not be computed / should be excluded, not divide-by-zero — confirm with Jan/
   Dwight what "0 reps" even means as an input; flag if schema allows it).
-- reps=1 (1RM should ≈ the weight itself, formula still applies: 100×(1+1/30)=103.33 — confirm this matches
-  product's intent, since a true 1-rep set logged at true max would over-report by the formula. Not a bug,
-  but the UI label "Estimated" (§55) is exactly why — test only that the label is always shown next to the
-  number, never bare.
+- **reps=1 boundary — does NOT route through Epley.** Settled in `workout-semantics.md §2`: a true single
+  IS the 1RM by definition, so `e1RM(weight=100, reps=1)` must equal **100.00** (the actual weight), not
+  Epley's `103.33`. Blindly applying Epley at reps=1 overstates a genuine max by ~3% and would let a
+  lighter multi-rep estimate outrank a real single in the user's strength history — wrong per §101
+  (correctness first). Required test: assert the reps=1 branch short-circuits before the formula runs, not
+  just that the output happens to match — this is the assertion that catches a regression back to blind
+  Epley.
 - Output is always displayed with the "Estimated 1RM" label — component test, not just unit test.
 
 ### 4.3 Personal record detection (§16)
 
 Given a new completed set/session, PR detection must independently check each of:
-- highest weight (for that exercise)
-- highest estimated 1RM
-- highest reps (at a given or any weight — confirm which with Jan/Dwight, flag if ambiguous)
+- highest weight (for that exercise) — key `(user, exercise)`
+- highest estimated 1RM — key `(user, exercise)`
+- highest reps **at that weight** — key `(user, exercise, weight)`. Settled in `workout-semantics.md §1.2`:
+  scope is per (exercise, weight), not any-weight or a threshold — reps are only comparable at equal load
+  (8@100kg beating 6@100kg is a real PR; 30@20kg should never outrank 5@100kg). Test matrix for this PR
+  type must fix the weight and vary reps at that weight, plus a separate case proving a different weight
+  bucket is independent (a new rep max at 60kg does not touch the 100kg bucket's record).
 - highest workout volume (session-level, not per-set)
 - best distance / best duration (cardio exercises)
 
 Test matrix: for each PR type, (a) new value below all-time best → no PR flagged, (b) new value equal to
-best → no PR (must be strictly greater — confirm tie-handling with Jan/Dwight), (c) new value above best →
+best → no PR (**strictly greater**, settled in `workout-semantics.md §1.1` — no divergence from this doc's
+original assumption), (c) new value above best →
 PR flagged and written to PR history, (d) first-ever set for an exercise → PR flagged (no prior baseline to
 beat) but must not throw on empty history. (d) is the classic null-baseline bug — explicit test required.
 
@@ -306,15 +314,17 @@ MVP-loop test by name, is green on the exact commit being shipped.
 
 1. **Account deletion semantics** (§24 above): §87 (prefer soft delete) vs §90 (provide real data deletion)
    need an explicit resolution for the `profiles`/account row specifically. Soft-delete-only does not
-   satisfy §90 as written.
-2. **PR tie-handling**: is equal-to-current-best a PR or not? (§4.3)
-3. **PR "highest repetitions" scope**: highest reps at any weight, or highest reps at/above a given weight
-   threshold? (§4.3) — affects what the test asserts as correct.
+   satisfy §90 as written. **Open — routed to Jan** (privacy/security decision, not a convenience one).
+2. ~~PR tie-handling~~ — **resolved**, `workout-semantics.md §1.1`: strictly greater only (§4.3 updated).
+3. ~~PR "highest repetitions" scope~~ — **resolved**, `workout-semantics.md §1.2`: per (exercise, weight),
+   not any-weight or a threshold (§4.3 updated).
 4. **Offline write conflict resolution rule**: last-write-wins by client timestamp, server-authoritative
    merge, or something else? (§4.4) — cannot write the conflict test's expected outcome without this.
-5. **Idempotency for queued/retried writes**: is there a client-generated idempotency key on
-   `workout_sessions`/`workout_sets`, or is dedup handled another way? (§4.6) — needed to test duplicate-
-   submission safety precisely.
+   **Open — routed to Jan.**
+5. ~~Idempotency for queued/retried writes~~ — **resolved**, `workout-semantics.md §3`: UPSERT on a
+   client-generated key per level (session `client_uuid`, session-exercise `client_uuid`, set
+   `(session_exercise_id, set_number)`, PR provenance `(workout_set_id, pr_type)`); duplicate-submission
+   safety is testable once Jan applies schema deltas D1/D2/D4.
 
-These don't block writing *this* doc, but they block writing the *actual test code* for those four items
-later. Flag resolved via hive message to Jan/Dwight.
+Items 2, 3, 5 don't block test code anymore — `workout-semantics.md` is the source of truth. Items 1 and 4
+are still open, routed to Jan; do not re-chase, wait for his doc to land.

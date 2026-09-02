@@ -239,8 +239,10 @@ async function main() {
     for (let i = 0; i < width * height; i++) {
       const o = i * 4;
       if (out[o + 3] === 0) continue;
+      // charcoal cluster measures s ~0.08-0.25 depending on AA blending; brand green is s>=0.7.
+      // 0.4 keeps a large margin from green while catching every charcoal shade.
       const { s } = rgbToHsl(out[o], out[o + 1], out[o + 2]);
-      if (s < 0.15) {
+      if (s < 0.4) {
         out[o] = LIGHT_SUBSTITUTE.r; out[o + 1] = LIGHT_SUBSTITUTE.g; out[o + 2] = LIGHT_SUBSTITUTE.b;
       }
     }
@@ -315,7 +317,8 @@ async function main() {
   // android adaptive icon: 432x432 (108dp @4x), foreground mark within 66% safe-zone circle, separate flat background
   const ANDROID_SIZE = 432;
   const safeDiameter = Math.round(ANDROID_SIZE * 0.66);
-  const androidMarkBuf = await sharp(Buffer.from(outRGBA), { raw: { width, height, channels: 4 } })
+  // foreground must use the light-charcoal variant: it composites over the dark background layer below
+  const androidMarkBuf = await sharp(Buffer.from(outRGBA_dark), { raw: { width, height, channels: 4 } })
     .extract(markExtractRect)
     .resize({ width: safeDiameter })
     .png()
@@ -329,17 +332,22 @@ async function main() {
     .png()
     .toFile(path.join(OUT_DIR, "android-adaptive-background-432.png"));
 
-  // expo splash: transparent mark, moderate scale, meant for `contain` + configured backgroundColor
-  const splashMarkBuf = await sharp(Buffer.from(outRGBA), { raw: { width, height, channels: 4 } })
-    .extract(markExtractRect)
-    .resize({ width: Math.round(1200 * 0.34) })
-    .png()
-    .toBuffer();
-  const splashMeta = await sharp(splashMarkBuf).metadata();
-  await sharp({ create: { width: 1200, height: 1200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-    .composite([{ input: splashMarkBuf, left: Math.round((1200 - splashMeta.width) / 2), top: Math.round((1200 - splashMeta.height) / 2) }])
-    .png()
-    .toFile(path.join(OUT_DIR, "splash-mark-1200.png"));
+  // expo splash: transparent mark, moderate scale, meant for `contain` + configured backgroundColor.
+  // Two variants since splash backgroundColor follows system theme (§31) - natural mark reads on light, recolored on dark.
+  async function splashMark(buf, suffix) {
+    const markBuf = await sharp(Buffer.from(buf), { raw: { width, height, channels: 4 } })
+      .extract(markExtractRect)
+      .resize({ width: Math.round(1200 * 0.34) })
+      .png()
+      .toBuffer();
+    const meta = await sharp(markBuf).metadata();
+    await sharp({ create: { width: 1200, height: 1200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: markBuf, left: Math.round((1200 - meta.width) / 2), top: Math.round((1200 - meta.height) / 2) }])
+      .png()
+      .toFile(path.join(OUT_DIR, `splash-mark-${suffix}-1200.png`));
+  }
+  await splashMark(outRGBA, "light");
+  await splashMark(outRGBA_dark, "dark");
 
   // favicons + apple touch icon, from the tight mark-transparent crop
   for (const size of [16, 32, 48]) {

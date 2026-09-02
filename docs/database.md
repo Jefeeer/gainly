@@ -379,10 +379,13 @@ create table personal_records (                        -- §16 auto-detected
   exercise_id   uuid not null references exercises(id) on delete cascade,
   pr_type       pr_type not null,
   value         numeric not null,                      -- kg / reps / volume / distance / seconds
-  reps          int,                                   -- context for weight/e1RM PRs
+  reps          int,                                   -- context for weight/e1RM; and the rep count itself for max_reps (decision C)
+  weight        numeric,                               -- context weight for a max_reps PR (decision C: any-weight)
   achieved_at   timestamptz not null default now(),
   workout_set_id uuid references workout_sets(id) on delete set null, -- provenance
   created_at    timestamptz not null default now()
+  -- PR is an EVENT log: one row per new record. Insert only when value STRICTLY > current best
+  -- for (user_id, exercise_id, pr_type) — a tie is not a PR (decision B). No unique on value.
 );
 ```
 
@@ -618,6 +621,63 @@ read paths in `api.md`; no speculative indexes.
 Every table above appears in §33's list plus the 3 lookups (`muscles`, `equipment`,
 `exercise_categories`) required to normalize §13's fixed lists (§33 L167). Every FK in §1–9
 resolves to a table defined here.
+
+---
+
+## 13. Resolved schema decisions (G-1 addendum — the 5 Angela needs)
+
+These are the **single source of truth**. Semantics for B/C/E are co-owned with Dwight
+(business logic + API); the schema *shape* below is my ruling and is what tests assert against.
+
+### D-a. Account deletion — §87 (soft) vs §90 (hard). **Security decision: hybrid, hard wins for the account.**
+- **Rule:** *Content* soft-deletes (exercises via `is_active`, templates via `is_active`) so
+  history stays intact (§87's actual example, L2892). The **account/PII row is HARD-deleted**
+  (§90 wins for the person's data, L2938).
+- **Flow (two-step, testable):**
+  1. User confirms deletion → session/tokens revoked immediately; `profiles.deleted_at = now()`
+     (grace window, default 30 days). During the window the account **cannot authenticate** and
+     RLS does **not** serve the row (see `rls.md`: profiles select gains `and deleted_at is null`).
+     So a soft-deleted account is *invisible*, not "deleted-but-queryable" — this closes the
+     privacy gap Angela flagged (testing §24).
+  2. On grace expiry (or explicit "delete now") a `apps/api` service-role job deletes the
+     `auth.users` row → `on delete cascade` from `profiles` purges **all** owner rows
+     (sessions, sets, PRs, body, nutrition, goals, subscriptions, devices, health).
+- **Workouts/PRs:** purged with the account (FK cascade). No anonymize-and-retain by default
+  (no legal/product requirement stated). Aggregate `analytics_events` survive de-identified
+  (`user_id` is `on delete set null`, `database.md §9`).
+- **Test assertion (testing §24):** post-purge, no `profiles`/`workout_sessions`/… row is
+  readable via the former credentials; re-registering the same email resurrects nothing.
+
+### D-b. PR tie-handling. **Must STRICTLY exceed the current best.** (co-owned: Dwight)
+Equal-to-best is **not** a PR. `personal_records` insert is guarded by
+`value > max(value) for (user_id, exercise_id, pr_type)`. Prevents duplicate PR rows on repeated
+identical sessions; the UI celebrates only genuine improvement. Semantics confirmed to Dwight.
+
+### D-c. PR "highest reps" scope. **Reps at ANY weight.** (co-owned: Dwight)
+`max_reps` PR = the highest single-set rep count for the exercise, **irrespective of weight**
+(literal reading of §16 "Highest repetitions", no threshold in spec). The set's `weight` is
+stored on the PR row for context (`personal_records.weight`) but is **not** part of the
+comparison. Weighted progress is already covered by `max_weight` + `max_e1rm` PR types.
+
+### D-d. Offline write conflict resolution. **Idempotent upsert + Last-Write-Wins by `updated_at`; no merge.** (see `offline.md`)
+- Workout-tree rows (sessions/exercises/sets) reconcile by **idempotent upsert on `client_uuid`**
+  (decision E) — a replay converges to the same row, so there is no true conflict.
+- Session **metadata** (name/notes/reorder) uses **LWW by client-stamped `updated_at`**: the
+  server applies an incoming write only if `incoming.updated_at >= stored.updated_at`; a stale
+  queued write (older `updated_at` than the current row) is **dropped**, not applied. This is the
+  exact rule Angela's testing §4.4 conflict test needs ("must not overwrite newer data with
+  stale queued data"). No CRDT/field-merge — justified by the single-active-device ceiling
+  (`offline.md §3`).
+
+### D-e. Idempotency key for queued/retried writes. **Yes — `client_uuid` on every offline-creatable row.**
+- `workout_sessions.client_uuid` (unique), `workout_session_exercises.client_uuid` (unique),
+  `workout_sets.client_uuid` (unique) — all client-generated UUIDs.
+- The sync queue sends the workout tree keyed by these UUIDs; `apps/api` **upserts on
+  `client_uuid`**, resolving parent references via a client→server id map. A retried set-log
+  after a flaky ack hits the existing `client_uuid` → **no duplicate row** (testing §4.6).
+- Secondary natural key `(session_exercise_id, set_number)` remains unique as a second guard.
+- `apps/api` returns the canonical row on a duplicate `client_uuid` (`200`), or `409 CONFLICT`
+  resolved to it (`api.md §5`).
 
 ---
 

@@ -66,7 +66,7 @@ GET   /workouts?status&page       -> session history (idx_sessions_user_started)
 POST  /workouts                   -> start session (optional template_id) — idempotent on client_uuid
 GET   /workouts/:id               -> session + exercises + sets (nested)
 PATCH /workouts/:id               -> rename/notes/reorder
-POST  /workouts/:id/finish        -> compute metrics (§17), detect PRs (§16), set finished_at
+POST  /workouts/:id/finish        -> compute metrics (§17), detect PRs (§16), set ended_at
 DELETE/workouts/:id               -> discard (status='discarded')
 
 # Templates & programs

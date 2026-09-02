@@ -44,8 +44,10 @@ create policy del_own on <t> for delete using (user_id = auth.uid());
 
 `profiles` (PK `id` = auth user):
 ```sql
-create policy sel_self on profiles for select using (id = auth.uid());
-create policy upd_self on profiles for update using (id = auth.uid())
+-- deleted_at is null: a soft-deleted account (in its grace window, decision D-a) is invisible,
+-- not "deleted-but-queryable" — this is what makes soft-delete satisfy §90 privacy.
+create policy sel_self on profiles for select using (id = auth.uid() and deleted_at is null);
+create policy upd_self on profiles for update using (id = auth.uid() and deleted_at is null)
                                         with check (id = auth.uid());
 -- INSERT handled by a signup trigger / service role; is_admin & role cols not client-writable:
 -- enforce via a trigger that rejects changes to is_admin unless is_admin() (defense in depth).
@@ -177,12 +179,18 @@ Storage policies mirror the table pattern: `bucket_id = 'avatars' and (storage.f
 
 ---
 
-## 7. Account deletion (§90 L2938)
+## 7. Account deletion (§90 L2938) — decision D-a (see `database.md §13`)
 
-`profiles.deleted_at` soft-delete for grace period; hard delete cascades from
-`auth.users` → `profiles` (`on delete cascade`) → all owner tables (all FKs to `profiles`
-cascade). A `apps/api` job performs the auth-user delete (service role). This gives users the
-"delete my data" guarantee §90 requires, with FK cascade ensuring no orphaned personal rows.
+Two-step, **hard-delete wins for the account** (§90) while *content* soft-deletes (§87):
+1. **Soft window:** on user request, revoke session + set `profiles.deleted_at`. The
+   `and deleted_at is null` clause in the profiles policies (§1) makes the account immediately
+   invisible and unauthenticable — a soft-deleted account is not queryable, so soft-delete here
+   is privacy-compliant, not a loophole.
+2. **Hard purge:** an `apps/api` service-role job deletes the `auth.users` row after the grace
+   window (or immediately on "delete now"); `on delete cascade` from `profiles` removes every
+   owner row (sessions, sets, PRs, body, nutrition, goals, subscriptions, devices, health) — no
+   orphans. `analytics_events.user_id` is `on delete set null`, so aggregate rows survive
+   de-identified. This is the §90 "delete my data" guarantee.
 
 ---
 

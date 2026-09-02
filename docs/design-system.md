@@ -38,7 +38,7 @@ blue    400 #60A5FA  600 #2563EB  700 #1D4ED8
 | `bg/surface-2` | `#F0F2EF` | Nested surfaces (input fields, inset panels) |
 | `border/default` | `#E4E7E3` | Dividers, card borders |
 | `border/strong` | `#C3C9C0` | Input borders, focus-adjacent |
-| `text/primary` | `#1B1F1C` | Headings, body |
+| `text/primary` | `#293034` | Headings, body (sampled from the real logo's ink color, G-7 — see §10) |
 | `text/secondary` | `#4B534D` | Supporting text |
 | `text/muted` | `#6B746E` | Captions, placeholders, timestamps |
 | `primary/default` | `#15803D` | Button fills, active nav, primary CTA |
@@ -74,8 +74,8 @@ blue    400 #60A5FA  600 #2563EB  700 #1D4ED8
 
 | Pair | Ratio | Passes |
 |---|---|---|
-| `text/primary` on `bg/base` (light) | 15.66:1 | AAA |
-| `text/primary` on `surface-1` (light) | 16.68:1 | AAA |
+| `text/primary` on `bg/base` (light) | 12.59:1 | AAA |
+| `text/primary` on `surface-1` (light) | 13.40:1 | AAA |
 | `text/secondary` on `bg/base` (light) | 7.46:1 | AAA |
 | `text/muted` on `bg/base` (light) | 4.54:1 | AA |
 | `text/muted` on `surface-1` (light) | 4.83:1 | AA |
@@ -176,8 +176,11 @@ Contract = purpose, key variants/states, a11y notes. No implementation here — 
 
 **Product components**
 - `MetricCard` / `StatCard` — `type/metric-md` value + `type/caption` label + optional trend chip (▲/▼ glyph, never color-only for direction).
-- `ExerciseIllustration` — fixed 1:1 or 4:3 container, skeleton placeholder while loading, fallback silhouette icon if illustration missing (never a broken-image state).
-- `ExerciseCard` — illustration + name + last-performed metric, tap target is the full card row (not just the text).
+- `ExerciseIllustration` — fixed 1:1 container, skeleton placeholder while loading, fallback silhouette icon if a frame is missing (never a broken-image state). Source is the `@bryllim/workout-guide` package: exactly 3 raster PNG frames per exercise (512x512, `assets/<slug>/frame-{1,2,3}.png`, shipped in-package — no CDN fetch/cache layer needed for offline). The "exercise animation" is a fixed 3-frame cycle, not an arbitrary sprite count or a vector morph — build the loading/placeholder state around exactly 3 raster frames.
+  **Legal constraint, binding**: all 906 frames are CC BY-SA 4.0 (ShareAlike). The component must render the shipped frame **verbatim** and apply theme/dark-mode tinting at render time only — `tintColor` on `expo-image` (mobile), CSS `filter` (web). Never pre-bake a recolored/themed copy of a Workout Guide frame into the repo as a build asset; a modified image we ship would itself have to stay CC BY-SA 4.0. If a build step ever transforms a WG frame, that's the line — stop.
+  Also render an `isStretch` badge/chip variant (14 of 302 exercises) using the existing `Badge`/`Chip` primitive, not a new component.
+- `ExerciseCard` — illustration + name + last-performed metric, tap target is the full card row (not just the text). Slugs do not encode equipment (`bench-press`, not `barbell-bench-press`) — do not derive equipment display from the slug.
+- `ExerciseDetail` empty state — `instructions`/`description`/`difficulty` do not exist in the imported package (Gainly-owned content, empty until authored). This is a real, designed MVP empty state on the exercise-detail screen (reuse `EmptyState`), not a "will be populated" placeholder assumption.
 - `SetRow` (active-workout set logger — the highest-traffic component in the app) — columns: set #, previous (muted, mono), weight input, reps input, complete-toggle. Complete toggle is a full-row tap target (not a tiny checkbox), fires optimistic update (§83), haptic + `motion/instant` check animation on completion. Each input needs `accessibilityLabel` that includes the set number and field ("Set 2 weight") since visually the label is implied by column position only — a screen reader flattens the grid.
 - `RestTimer` — `CircularProgress` ring + `type/metric-lg` countdown + skip/add-15s actions below (44×44 targets), announces "Rest complete" via live region on end so a screen-reader user doesn't have to watch the ring.
 - `ChartShell` — wraps the chart lib pick (see §7) with a consistent header (title + time-range selector), and *owns* the empty/loading/error states so no screen implements its own chart-empty-state copy.
@@ -206,5 +209,5 @@ Net effect: change a token once, both platforms pick it up automatically; compon
 
 ## 9. Needs human sign-off
 
-- No wordmark/logo file exists yet (greenfield). This doc defines how the brand *uses* color/type; the literal logo mark/wordmark artwork needs a human (or a dedicated design pass) — flagging per task boundaries rather than inventing brand assets.
-- No exercise illustration set exists yet — `ExerciseIllustration` above assumes a to-be-sourced illustration library; flagging as a follow-up need, not blocking token/component-contract delivery.
+- ~~No wordmark/logo file exists yet~~ — resolved by G-7: the real logo landed and brand palette/derivative assets are now sourced from it (see `packages/ui/assets/brand/`).
+- ~~No exercise illustration set exists yet~~ — resolved: `@bryllim/workout-guide` supplies 906 verified frames. `ExerciseIllustration`'s contract above reflects the real 3-frame/render-time-tint/CC BY-SA constraints. An attribution screen (Settings > About > Open Source Licenses) is confirmed MVP scope (G-12) but is a separate dispatched task, not built here.
