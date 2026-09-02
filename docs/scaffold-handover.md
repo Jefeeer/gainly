@@ -240,3 +240,56 @@ constrained me at ~2.35M tokens before I could run the single root install.
 - next typegen used in web+admin typecheck scripts - assumed present in Next 16.
 - No transpilePackages added yet (no app imports a workspace TS package today);
   add it the moment an app imports @gainly/ui or another src-exporting package.
+---
+
+## 7. Expo SDK 54 trial — before/after version table (G-16, Darryl)
+
+Temporary, revertible. Full reasoning/narrative lives in root CLAUDE.md's "Expo SDK: 54 is a
+TEMPORARY trial" section — this table is the mechanical revert data. Resolved via
+`npx expo install expo@^54.0.0` then `npx expo install --fix` inside apps/mobile, letting Expo's
+own matrix decide every version (nothing hand-picked). SDK 57 baseline is commit `3f0a6ba` and
+the isolated baseline-then-downgrade commits made for this trial (see git log). To revert: restore
+the `SDK 57` column values into `apps/mobile/package.json` and re-run `pnpm install` — do not
+re-derive the peer set from memory, that's the expensive part this table exists to skip.
+
+| Package | SDK 57 (baseline) | SDK 54 (trial) |
+|---|---|---|
+| expo | ~57.0.19 | ~54.0.37 |
+| @expo/ui | ~57.0.15 | ~0.2.0-canary-20260121-a63c0dd |
+| expo-constants | ~57.0.17 | ~18.0.14 |
+| expo-device | ~57.0.1 | ~8.0.10 |
+| expo-font | ~57.0.3 | ~14.0.12 |
+| expo-glass-effect | ~57.0.1 | ~0.1.10 |
+| expo-image | ~57.0.4 | ~3.0.11 |
+| expo-linking | ~57.0.9 | ~8.0.12 |
+| expo-router | ~57.0.18 | ~6.0.24 |
+| expo-splash-screen | ~57.0.8 | ~31.0.13 |
+| expo-status-bar | ~57.0.1 | ~3.0.9 |
+| expo-symbols | ~57.0.2 | ~1.0.8 |
+| expo-system-ui | ~57.0.3 | ~6.0.9 |
+| expo-web-browser | ~57.0.2 | ~15.0.11 |
+| react | 19.2.3 | 19.1.0 |
+| react-dom | 19.2.3 | 19.1.0 |
+| react-native | 0.86.3 | 0.81.5 |
+| react-native-gesture-handler | ~2.32.0 | ~2.28.0 |
+| react-native-reanimated | 4.5.1 | 4.1.7 |
+| react-native-safe-area-context | ~5.7.0 | ~5.6.2 |
+| react-native-screens | ~4.26.0 | ~4.16.0 |
+| react-native-worklets | 0.10.1 | 0.5.1 |
+| @types/react | ~19.2.2 | ~19.1.17 |
+| eslint-config-expo | 57.0.2 | ~10.0.0 |
+| typescript (mobile only) | ~6.0.3 | ~5.9.3 |
+
+Unchanged by the trial: `react-native-web` stays `~0.21.0` (not part of Expo's native matrix).
+`@expo/ui`/`expo-glass-effect` are unused in `src/` at both versions — kept installed at 54
+(zero source impact either way, see CLAUDE.md correction). `app.json`'s plugins array gained two
+explicit entries (`expo-font`, `expo-web-browser`) that `expo install --fix` auto-registered —
+revert by removing those two array entries.
+
+**Known breakage at 54, NOT fixed by me** (outside this card's boundary — source edits, not
+config/deps): `expo-router@6.0.24` doesn't export `ThemeProvider`/`DarkTheme`/`DefaultTheme` at
+all (verified against its build output), so `src/app/_layout.tsx`'s import of all three resolves
+to `undefined` — a boot-time crash, not a type error. Also broken: SF Symbols typing
+(`SFSymbols7_0` narrower), `NativeTabTrigger.Label`/`.Icon` missing, `ColorSchemeName` no longer
+admits `'unspecified'`. 20 typecheck errors across 6 files total. Routed to Jim as G-19; do not
+re-fix here.
