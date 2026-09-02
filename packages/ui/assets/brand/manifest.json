@@ -23,6 +23,7 @@
   "files": [
     "android-adaptive-background-432.png",
     "android-adaptive-foreground-432.png",
+    "android-adaptive-monochrome-432.png",
     "app-icon-ios-1024.png",
     "apple-touch-icon-180.png",
     "favicon-16.png",
@@ -34,7 +35,6 @@
     "lockup-stacked-transparent.png",
     "mark-dark-bg.png",
     "mark-transparent.png",
-    "splash-mark-1200.png",
     "splash-mark-dark-1200.png",
     "splash-mark-light-1200.png"
   ]

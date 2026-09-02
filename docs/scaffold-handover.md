@@ -76,6 +76,125 @@ moves/edits) succeeded. The risk is untested surface area, not known breakage.
 
 ---
 
+## 6. Supabase (G-11, Darryl — local dev + migration harness)
+
+Unfrozen and reassigned to the Supabase layer only (Oscar owns G-2b / app scaffold,
+Jan owns schema content, Angela owns pgTAP test content). This section documents the
+harness; no schema DDL and no app-scaffold files were touched.
+
+### Pinned tool version
+
+- Supabase CLI `2.116.0`, resolved live via `npx supabase@latest --version` (not
+  guessed). **Not yet a devDependency** — I do not own root `package.json` while
+  Oscar's G-2b is in flight. Exact line to add, routed via god:
+  ```json
+  "supabase": "2.116.0"
+  ```
+  Pinned exact (no `^`), matching how the Supabase project itself recommends
+  pinning the CLI — a minor CLI bump can change migration/config behavior.
+
+### Environment gap — no Docker
+
+`supabase start` requires Docker (or Podman) to run the local Postgres/Auth/
+Storage/Realtime stack; neither is installed on this machine. Confirmed with the
+actual CLI error, not assumed:
+```
+{"_tag":"Error","error":{"code":"LegacyDockerLifecycleInspectError","message":
+"failed to inspect container health: docker: command not found (podman also not
+found) — install Docker Desktop or Podman and ensure it is on PATH"}}
+```
+Everything below that does NOT require a running Postgres (`init`, `migration new`,
+config edits) was completed and verified. Everything that DOES require Docker
+(`start`, `db reset`, `test db` actually executing) is documented but **not run** —
+installing Docker Desktop is a system-level change (admin rights, hypervisor/WSL2,
+likely a reboot) I'm not making unilaterally. **Escalated to god/human**, not faked.
+
+### What's on disk
+
+```
+supabase/
+  config.toml       # from `supabase init`, one edit (see below)
+  .gitignore        # from `supabase init` (.branches, .temp, .env.keys, .env*.local)
+  migrations/.gitkeep   # empty, ready for Jan's DDL — verified the naming convention
+                        # works via a throwaway `supabase migration new harness_smoke_test`
+                        # (produced 20260902130642_harness_smoke_test.sql), then deleted it.
+  functions/.gitkeep    # empty, ready for Edge Functions (none needed yet)
+  seed/.gitkeep         # empty, ready for Jan's seed data
+  tests/rls/.gitkeep    # empty, ready for Angela's pgTAP files (testing.md §4.5:
+                        # supabase/tests/rls/*.sql)
+```
+
+**config.toml edit:** default `[db.seed].sql_paths` is `["./seed.sql"]` (a single
+file). Spec §4's tree wants `supabase/seed/` as a *folder*, so changed to
+`sql_paths = ["./seed/*.sql"]` — everything Jan/whoever drops under `supabase/seed/`
+gets picked up automatically on `db reset`, ordered by filename.
+
+### pgTAP — one thing NOT done, needs Jan
+
+`supabase test db` runs pgTAP files (default picks up anything under
+`supabase/tests/`, so `tests/rls/*.sql` is covered with no extra config). But pgTAP
+itself needs `create extension if not exists pgtap;` run once against the database.
+Per my boundary I do not write schema DDL — `database.md §1` already says Jan's
+first migration should do `extensions → enums → lookups → ...`. **Flagging for
+Jan:** add `pgtap` alongside `pgcrypto`, `pg_trgm`, `unaccent` in that first
+extensions migration, or pgTAP tests will fail to run with a missing-extension
+error once Docker is available. Not done here to avoid a second agent writing
+migration content.
+
+### The local dev loop (commands, once Docker is present)
+
+```bash
+# one-time / after pulling new deps
+pnpm supabase start          # boots Postgres+Auth+Storage+Realtime+Studio in Docker
+                              # prints local anon key / service_role key / URL — put
+                              # those in .env.local, NOT .env.example
+
+# schema iteration
+pnpm supabase migration new <name>   # empty timestamped file: YYYYMMDDHHMMSS_<name>.sql
+pnpm db:migrate                       # -> `supabase migration up`: applies pending
+                                       #    migrations without wiping data
+pnpm db:seed                          # -> `supabase db reset`: drops, re-applies every
+                                       #    migration from scratch, then runs
+                                       #    supabase/seed/*.sql — this is also what CI
+                                       #    uses to prove migrations replay cleanly
+                                       #    (testing.md §5 CI gate #7)
+
+# tests
+pnpm supabase test db                 # runs every *.sql under supabase/tests/ with
+                                       # pgTAP (needs the pgtap extension enabled first)
+
+# shutdown
+pnpm supabase stop
+```
+
+`db:migrate` / `db:seed` script names already exist in root `package.json` (added
+by Oscar/god ahead of this card) — I did not touch that file, just confirmed the
+commands they wrap are correct for this config.
+
+### Env validation (Zod) — already landed, by Oscar, not me
+
+**Correction while writing this section**: Oscar's `packages/validation/src/env.ts`
+(added concurrently under G-2b, see his "Completion (PARTIAL)" note below) already
+covers this — one combined `envSchema` including `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, called explicitly
+via `parseEnv()` rather than as an import side-effect. I did not write it and am not
+touching `packages/validation`. **One gap that schema doesn't cover yet**: it's a
+single schema with no split between the server-safe subset and the client-safe
+subset, so nothing currently *stops* `SUPABASE_SERVICE_ROLE_KEY` from being pulled
+into a mobile/web bundle by accident — `testing.md §4.5` wants that enforced by a CI
+grep gate (service-role key string never appears in `apps/mobile`/`apps/web`
+bundles), not by the schema shape itself, so this may already be covered depending
+on how Angela wires that CI step. Flagging so it isn't assumed solved by the schema
+alone.
+
+### Still needs the human (per god, already communicated)
+
+Creating the actual hosted Supabase project (staging/prod) — not attempted, not
+faked. Local-only harness above is what CI and every dev machine will use until
+that lands.
+
+---
+
 ## Completion (PARTIAL — Oscar oscar-mtk34elp, stopped at token cap)
 
 STATUS: tree complete, but pnpm install NEVER RAN. node_modules absent.

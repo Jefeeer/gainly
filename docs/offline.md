@@ -48,11 +48,18 @@ Writes to the server are **queued**, not inline. A persisted FIFO queue of mutat
 Gainly's data shape makes conflicts rare and resolvable without CRDTs:
 - A workout session is **owned and edited by one user on one active device** at a time. There is
   no concurrent multi-writer on the same session in MVP.
-- **Idempotent upserts** keyed by stable client-generated ids (`client_uuid` for sessions,
-  `(session_exercise_id,set_number)` for sets) make replay safe — the "conflict" of a retried
-  write resolves to the same row (`api.md §5`, `409 CONFLICT` → canonical row).
-- **Last-write-wins per field** on session metadata (notes/name), scoped to the single active
-  device — acceptable because there is no second concurrent editor.
+- **Idempotent upserts** keyed by stable client-generated ids (reconciled with Dwight D1/D2):
+  `unique(user_id, client_uuid)` on sessions, `client_uuid` on `session_exercises`
+  (`(session_id,position)` isn't stable — position mutates on reorder), and
+  `(session_exercise_id, set_number)` on sets with a **client-assigned, retry-stable
+  `set_number`**. Replay resolves to the same row (`api.md §5`, `409 CONFLICT` → canonical row).
+- **Session metadata (notes/name) is last-write-wins by `updated_at`** (decision D-d,
+  `database.md §13`): the server applies an incoming write only if
+  `incoming.updated_at >= stored.updated_at`; a queued write that is **older** than the row
+  already on the server is **dropped**, not applied — this is what stops a stale queued write from
+  clobbering a newer edit made from elsewhere before the queue drained. Scoped to the single
+  active device (below) — acceptable because there is no second concurrent editor to actually
+  race against.
 - Finish is idempotent: re-finishing returns the same computed metrics (`api.md §5`).
 
 `ponytail:` single-active-device assumption is the deliberate ceiling. Upgrade path if
@@ -93,6 +100,13 @@ and degrade to cached/stale + a clear offline indicator (§85 error states). No 
 the entire app writable offline; that would trade §101 #2 data integrity for breadth we don't
 need (§39 is workout-scoped).
 
+**Workout Guide exercise images are not part of this layer at all — they need no download/cache
+system.** All 906 frames ship bundled inside the app binary, verbatim, at build time (they are
+CC BY-SA 4.0; render-time tinting only, no pre-baked/modified copies — `workout-guide-
+integration.md`). There is nothing to fetch offline and nothing to cache: none of Layers A/B/C
+above apply to them. Don't add a WG asset cache table on the assumption offline strategy implies
+one.
+
 ---
 
 ## Assumptions & flagged contradictions
@@ -101,6 +115,8 @@ need (§39 is workout-scoped).
   correct and faster.
 - **A2** Single-active-device assumption (§3 above) — the ceiling that lets us skip CRDTs while
   still meeting §39's "conflict-safe". Flagged, not silent.
-- **A3** `client_uuid` on `workout_sessions` (added in `database.md §7`) is the linchpin of
-  idempotent sync; confirm it survives Darryl's migration generation.
+- **A3** Idempotency keys (reconciled with Dwight, `database.md §13` D-e): `unique(user_id,
+  client_uuid)` on sessions, `client_uuid` on `session_exercises`, client-owned `set_number` on
+  sets. These are the linchpin of duplicate-free sync; confirm they survive Darryl's migration
+  generation.
 - No offline-specific contradictions beyond the shared greenfield note (C1).

@@ -207,7 +207,52 @@ Contract = purpose, key variants/states, a11y notes. No implementation here — 
 
 Net effect: change a token once, both platforms pick it up automatically; component behavior stays free to diverge without token drift.
 
-## 9. Needs human sign-off
+## 9. Brand gradient (graphics-only — do not use for text or small UI)
 
-- ~~No wordmark/logo file exists yet~~ — resolved by G-7: the real logo landed and brand palette/derivative assets are now sourced from it (see `packages/ui/assets/brand/`).
+The logo's green is a two-stop gradient sampled directly from `Gainly-logo.png` pixels (script in §10), not a flat color:
+
+```
+gradient-dark-stop:  #1AAE2C
+gradient-light-stop: #A3E00B
+angle:                40deg
+css: linear-gradient(40deg, #1AAE2C 0%, #A3E00B 100%)
+```
+
+**This gradient fails accessibility and must never be used for text, icons, or small interactive fills**: `#1AAE2C` on white is 2.94:1 and `#A3E00B` on white is 1.59:1 — both fail even the 3:1 UI-component floor, let alone 4.5:1 text. (On dark backgrounds they fare better — 6.40:1 and 11.86:1 — but the rule stays universal so nobody has to remember a background-dependent exception.)
+
+That's exactly why `primary/default`/`primary/subtle` in §2 are separate, deliberately-chosen accessible greens (`#15803D`/`#16A34A` light, `#4ADE80` dark) — they are the **only** greens allowed in text, buttons, links, icons, charts, and focus rings. The sampled gradient above is reserved for the logo mark itself and large decorative graphics (hero illustrations, splash art) where no text sits directly on it and no meaning is conveyed by the color alone.
+
+## 10. Logo (G-7 — sourced from `Gainly-logo.png`)
+
+The human-supplied logo is a lockup: a circular "G" mark (charcoal ring + dumbbell flanks + the green gradient arrow/bar-chart) stacked above the "GAINLY" wordmark, on an opaque white canvas (1254x1254, no alpha).
+
+**Pipeline**: `gainly/scripts/generate-brand-assets.mjs` (re-run via `cd gainly/scripts && npm install && npm run brand-assets` whenever the source logo changes). It samples the palette from real pixels (not eyeballed), keys out the white background with anti-alias-aware matte decontamination (edge pixels are recolored to their nearest solid neighbor before alpha is computed, so there's no white fringing), splits the mark from the wordmark via row-density gap detection, and renders every derivative below into `packages/ui/assets/brand/`. Tooling added: `sharp` as a `devDependency` of a standalone `gainly/scripts/package.json` (plain `npm install`, isolated from the pnpm workspace root — does not touch root `package.json`/`pnpm-workspace.yaml`/`turbo.json` or the pnpm lockfile).
+
+**Files produced** (`packages/ui/assets/brand/`):
+
+| File | Purpose |
+|---|---|
+| `mark-transparent.png` | Mark only, tight crop + 12% optical padding, transparent — for light surfaces |
+| `mark-dark-bg.png` | Same crop, charcoal swapped for `#EDEFEC` — for placing directly on dark surfaces |
+| `lockup-stacked-transparent.png` / `-dark-bg.png` | Full mark+wordmark, original stacked layout, tight crop, transparent |
+| `lockup-horizontal-transparent.png` / `-dark-bg.png` | Full lockup recomposed mark-left/wordmark-right, for wide placements (web header) |
+| `app-icon-ios-1024.png` | 1024x1024, **opaque**, no alpha channel (App Store requirement), dark-bg-token background, mark at 70% width |
+| `android-adaptive-foreground-432.png` + `android-adaptive-background-432.png` | Adaptive icon layers (432px = 108dp@4x), foreground mark within the 66% safe-zone diameter, recolored light since it composites over the dark background layer |
+| `splash-mark-light-1200.png` / `splash-mark-dark-1200.png` | Transparent mark for Expo splash `resizeMode: contain`, paired with a light or dark `splash.backgroundColor` per system theme |
+| `favicon-16/32/48.png`, `apple-touch-icon-180.png` | Mark-only, from the same tight crop |
+| `manifest.json` | Machine-readable palette + contrast report + file list, for whoever wires app/web config next |
+
+**Wiring left for the scaffold owner** (not done here per task boundary): `app.json`/`expo` icon + adaptive-icon + splash config keys, Next.js `app/icon.png`/`app/apple-icon.png` file-convention (simpler and more reliable than hand-building a multi-res `.ico` — no ico-encoding dependency needed), and `favicon.ico` replacement in `apps/web/app/`.
+
+### Logo usage rules
+
+- **Minimum sizes**: mark alone ≥ 24px. Full lockup (either orientation) ≥ 120px wide — below that the wordmark stroke width and letter spacing degrade. Never scale the wordmark below this and expect it to stay legible; use the mark alone instead.
+- **Clear space**: keep clear space around the lockup ≥ the height of the dumbbell flanks on each side (roughly 12% of the mark's width, matching the padding baked into `mark-transparent.png`).
+- **Which variant on which background**: light/off-white and `bg/surface-*` (light theme) → natural-color variants (`*-transparent.png`). Any `bg/base`/`bg/surface-*` (dark theme) or other dark fill → the `*-dark-bg.png` variants. Never place the natural-color mark on a dark surface — the charcoal ring contrast is 1.41:1 there (invisible) which is exactly the defect this pipeline exists to avoid.
+- **Do not**: recolor the green gradient (it's sampled from the real asset, not a design choice to tweak); stretch or skew any variant (all compositing here preserves aspect ratio); recreate the wordmark in a different typeface for "consistency" with Geist — the wordmark is part of the fixed brand asset, not typeset UI text; or pre-bake any further edited copies outside this script (re-run the script instead, so the pipeline stays the single source of truth).
+
+## 11. Needs human sign-off
+
+- ~~No wordmark/logo file exists yet~~ — resolved by G-7: the real logo landed and brand palette/derivative assets are now sourced from it (see §10, `packages/ui/assets/brand/`).
 - ~~No exercise illustration set exists yet~~ — resolved: `@bryllim/workout-guide` supplies 906 verified frames. `ExerciseIllustration`'s contract above reflects the real 3-frame/render-time-tint/CC BY-SA constraints. An attribution screen (Settings > About > Open Source Licenses) is confirmed MVP scope (G-12) but is a separate dispatched task, not built here.
+- Whether the mark reads cleanly at true favicon scale (16px) is worth a human eyeball check — it's a dense mark (ring + dumbbell flanks + arrow) being asked to do icon-at-16px duty; the pipeline crops it correctly but can't judge legibility taste. Files are in `packages/ui/assets/brand/favicon-16.png` / `favicon-32.png` if a look is wanted.

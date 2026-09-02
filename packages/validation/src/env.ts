@@ -10,10 +10,14 @@ import { z } from "zod";
  * Secrets (SERVICE_ROLE, STRIPE, AI) must only ever be parsed server-side.
  */
 export const envSchema = z.object({
+  // Client-safe (RLS-gated). Expo/Next only expose the EXPO_PUBLIC_/NEXT_PUBLIC_-prefixed
+  // mirrors to bundled code; these unprefixed names are what server code (apps/api) reads.
   SUPABASE_URL: z.string().min(1),
   SUPABASE_ANON_KEY: z.string().min(1),
+  // Server-only from here down — never read these outside apps/api.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  DATABASE_URL: z.string().min(1),
+  // Session pooler (:5432), not transaction (:6543) — DDL/migrations need it.
+  SUPABASE_DB_URL: z.string().min(1),
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
   POSTHOG_KEY: z.string().min(1).optional(),

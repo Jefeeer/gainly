@@ -55,7 +55,7 @@ resolves `auth.uid()` before any query.
 GET   /me                         -> profile + settings + subscription summary
 PATCH /me                         -> update profile/settings (Zod: ProfileSchema)
 
-# Exercises (mostly served direct-Supabase; API path for admin + archived-in-history)
+# Exercises (mostly served direct-Supabase; API path for admin only)
 GET   /exercises?query&muscle&equipment&type&favorites&page   -> search/filter (§58, §11, §13)
 GET   /exercises/:id              -> details + muscles + aliases + media
 POST  /exercises                  -> create custom exercise (is_custom, created_by=me)
@@ -100,8 +100,11 @@ POST  /health/sync                -> HealthSyncService ingest (§27/§28)
 POST  /admin/*                    -> admin ops (is_admin gate + audit log §95)
 ```
 
-`GET /exercises/:id` on an archived global exercise is the one read that needs `apps/api`
-(service role) so history stays visible (`rls.md §3`, §87).
+A5 FIX (Oscar G-17): `GET /exercises/:id` on an archived exercise in history is served
+**direct-Supabase** via the `sel_archived_in_history` RLS policy (`rls.md §3`), scoped to
+exercises in the caller's own sessions. The former service-role resolver is **removed** — a
+fetch-by-id via service role bypasses RLS and was an IDOR (could return another user's private
+custom exercise). No service-role read path is used for exercises (§87).
 
 ---
 
@@ -120,12 +123,16 @@ POST  /admin/*                    -> admin ops (is_admin gate + audit log §95)
 
 ## 5. Idempotency & offline (ties to `offline.md`)
 
-- `POST /workouts` and mutating writes accept a client-generated `client_uuid`
-  (`workout_sessions.client_uuid`). Re-sending the same `client_uuid` returns the existing row
-  (`200`, not a duplicate) — this is how the offline sync queue safely retries (§39). Duplicate
-  key → `409 CONFLICT` resolved to the canonical row.
+- Every offline-creatable write carries a stable client key and is an **UPSERT** (reconciled with
+  Dwight, `database.md §13` D-e): sessions on `unique(user_id, client_uuid)`, `session_exercises`
+  on `client_uuid`, sets on `(session_exercise_id, set_number)` with a **client-assigned**
+  `set_number`. Re-sending returns the existing row (`200`, not a duplicate) — this is how the
+  offline sync queue safely retries (§39). Duplicate key → `409 CONFLICT` resolved to the
+  canonical row. The server never auto-increments `set_number` (that would make a retry a
+  duplicate set).
 - `POST /workouts/:id/finish` is idempotent: re-finishing a completed session returns the same
-  computed metrics without recomputing PRs.
+  computed metrics without recomputing PRs. The `pr_dedupe_by_set` partial unique
+  (`database.md`, Dwight D4) is the DB backstop against a retried finish double-inserting a PR.
 
 ---
 

@@ -83,7 +83,7 @@ create type exercise_type      as enum ('weight_reps','reps','duration','distanc
                                         'weight_duration','distance_duration','assisted_weight'); -- §11
 create type set_type           as enum ('warmup','normal','drop','failure','superset');          -- §10, extensible via new label
 create type difficulty_level   as enum ('beginner','intermediate','advanced');
-create type exercise_source    as enum ('gainly','workout_guide','user');                        -- §13A [→ dwight]
+create type exercise_source    as enum ('gainly','workout_guide','user','admin','imported');       -- §13A [→ dwight] (Dwight G-3)
 create type goal_status        as enum ('active','completed','paused','cancelled');              -- §21
 create type pr_type            as enum ('max_weight','max_e1rm','max_reps','max_volume',
                                         'best_distance','best_duration');                        -- §16
@@ -115,7 +115,7 @@ create table muscles (
 
 create table equipment (
   id          uuid primary key default gen_random_uuid(),
-  name        text not null unique,          -- Barbell, Dumbbell, ... Other (§13 L612)
+  name        text not null unique,          -- §13 L612 list + 'Pull-up Bar' (Dwight G-3: real group, not 7 exercises dumped in Other)
   slug        text not null unique,
   sort_order  int  not null default 0
 );
@@ -214,7 +214,7 @@ create table exercises (
   external_slug    text,
   asset_provider   text,
   asset_key        text,
-  asset_frame_count int,
+  asset_frame_count int,                           -- WG frames are a CONSTANT 3 (Dwight G-3); null for exercises w/o bundled frames
   -- ownership / lifecycle ------------------------------------------------------
   is_custom        boolean not null default false,  -- §13 L627 custom exercises
   is_active        boolean not null default true,   -- §87 soft delete / archive
@@ -222,7 +222,10 @@ create table exercises (
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   -- global library slug unique; each user's custom slugs unique to them
-  constraint exercises_slug_scope_unique unique nulls not distinct (slug, created_by)
+  constraint exercises_slug_scope_unique unique nulls not distinct (slug, created_by),
+  -- import idempotency (Dwight G-3): one row per external asset. Both cols null for gainly-source
+  -- rows, and Postgres treats NULLs as distinct, so only imported rows are constrained.
+  constraint exercises_external_unique unique (external_source, external_slug)
 );
 
 -- 5.2 exercise_muscles — junction, primary+secondary (§13 L593, §33)
@@ -340,9 +343,10 @@ create table workout_sessions (
   completed_sets int,
   total_reps    int,
   total_volume  numeric,                              -- §17 sum(weight*reps)
-  client_uuid   uuid,                                 -- offline dedupe key (§39, offline.md)
+  client_uuid   uuid,                                 -- offline idempotency key (§39; Dwight D1)
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+  constraint workout_sessions_client_uuid_unique unique (user_id, client_uuid) -- Dwight D1: makes it a real idempotency key
 );
 
 create table workout_session_exercises (
@@ -351,15 +355,16 @@ create table workout_session_exercises (
   exercise_id   uuid not null references exercises(id) on delete restrict, -- restrict: history keeps archived (§87)
   position      int not null,                         -- §9 reorder
   notes         text,                                 -- §9 add notes
-  client_uuid   uuid unique,                          -- offline idempotency key (decision E)
+  client_uuid   uuid,                                 -- offline idempotency key (decision E / Dwight D2)
   created_at    timestamptz not null default now(),
-  unique (session_id, position)
+  unique (session_id, position),
+  unique (session_id, client_uuid)                    -- Dwight D2: stable replay key ((session_id,position) mutates on reorder)
 );
 
 create table workout_sets (
   id            uuid primary key default gen_random_uuid(),
   session_exercise_id uuid not null references workout_session_exercises(id) on delete cascade,
-  set_number    int not null,
+  set_number    int not null,                          -- CLIENT-ASSIGNED, stable across retries; server upserts ON CONFLICT (session_exercise_id,set_number) (Dwight)
   set_type      set_type not null default 'normal',   -- §10
   weight        numeric check (weight is null or weight >= 0),   -- normalized kg (§89); no negatives (testing 4.1)
   reps          int     check (reps   is null or reps   >= 0),   -- no negatives; 1RM calc excludes reps=0 (testing 4.2)
@@ -368,7 +373,7 @@ create table workout_sets (
   rpe           numeric(3,1),                          -- optional effort
   is_completed  boolean not null default false,        -- §9 complete sets
   completed_at  timestamptz,
-  client_uuid   uuid unique,                           -- offline idempotency key (decision E)
+  client_uuid   uuid,                                  -- trace id; the replay/idempotency key is (session_exercise_id,set_number) w/ client-owned set_number (Dwight)
   created_at    timestamptz not null default now(),
   unique (session_exercise_id, set_number)
 );
@@ -379,14 +384,18 @@ create table personal_records (                        -- §16 auto-detected
   exercise_id   uuid not null references exercises(id) on delete cascade,
   pr_type       pr_type not null,
   value         numeric not null,                      -- kg / reps / volume / distance / seconds
-  reps          int,                                   -- context for weight/e1RM; and the rep count itself for max_reps (decision C)
-  weight        numeric,                               -- context weight for a max_reps PR (decision C: any-weight)
+  reps          int,                                   -- rep count (the value for max_reps); context for weight/e1RM PRs
+  weight        numeric,                               -- bucket weight for max_reps PR (decision C: PER-WEIGHT, Dwight); = value for max_weight; NULL = bodyweight bucket
   achieved_at   timestamptz not null default now(),
   workout_set_id uuid references workout_sets(id) on delete set null, -- provenance
   created_at    timestamptz not null default now()
   -- PR is an EVENT log: one row per new record. Insert only when value STRICTLY > current best
-  -- for (user_id, exercise_id, pr_type) — a tie is not a PR (decision B). No unique on value.
+  -- for the comparison scope of the pr_type — a tie is not a PR (decision B). No unique on value.
 );
+-- D4 (Dwight): stop a retried finish from double-inserting the same PR. Partial index because
+-- workout_set_id is nullable (on delete set null) and NULLs would otherwise collide.
+create unique index pr_dedupe_by_set on personal_records (workout_set_id, pr_type)
+  where workout_set_id is not null;
 ```
 
 `workout_session_exercises.exercise_id` uses `on delete restrict` and exercises are
@@ -653,15 +662,18 @@ Equal-to-best is **not** a PR. `personal_records` insert is guarded by
 `value > max(value) for (user_id, exercise_id, pr_type)`. Prevents duplicate PR rows on repeated
 identical sessions; the UI celebrates only genuine improvement. Semantics confirmed to Dwight.
 
-### D-c. PR "highest reps" scope. **Reps at ANY weight.** (co-owned: Dwight)
-`max_reps` PR = the highest single-set rep count for the exercise, **irrespective of weight**
-(literal reading of §16 "Highest repetitions", no threshold in spec). The set's `weight` is
-stored on the PR row for context (`personal_records.weight`) but is **not** part of the
-comparison. Weighted progress is already covered by `max_weight` + `max_e1rm` PR types.
+### D-c. PR "highest reps" scope. **Reps PER (exercise, WEIGHT).** (authoritative: Dwight, workout-semantics.md §2)
+`max_reps` PR = the most reps achieved **at a given weight** for that exercise, compared within
+the same-weight bucket — NOT reps at any weight. This prevents a light high-rep set (e.g.
+20×20kg) from outranking a heavy one (5×100kg). Bodyweight/rep-only exercises fall in the
+`weight IS NULL` bucket. `personal_records.weight` carries the bucket weight and **is** part of
+the comparison key. (Reconciled with Dwight, who owns the semantics; supersedes my earlier
+"any weight" draft.)
 
 ### D-d. Offline write conflict resolution. **Idempotent upsert + Last-Write-Wins by `updated_at`; no merge.** (see `offline.md`)
-- Workout-tree rows (sessions/exercises/sets) reconcile by **idempotent upsert on `client_uuid`**
-  (decision E) — a replay converges to the same row, so there is no true conflict.
+- Workout-tree rows (sessions/exercises/sets) reconcile by **idempotent upsert on their
+  client-generated key** (decision E — `client_uuid` for sessions/exercises, client-owned
+  `set_number` for sets) — a replay converges to the same row, so there is no true conflict.
 - Session **metadata** (name/notes/reorder) uses **LWW by client-stamped `updated_at`**: the
   server applies an incoming write only if `incoming.updated_at >= stored.updated_at`; a stale
   queued write (older `updated_at` than the current row) is **dropped**, not applied. This is the
@@ -669,15 +681,18 @@ comparison. Weighted progress is already covered by `max_weight` + `max_e1rm` PR
   stale queued data"). No CRDT/field-merge — justified by the single-active-device ceiling
   (`offline.md §3`).
 
-### D-e. Idempotency key for queued/retried writes. **Yes — `client_uuid` on every offline-creatable row.**
-- `workout_sessions.client_uuid` (unique), `workout_session_exercises.client_uuid` (unique),
-  `workout_sets.client_uuid` (unique) — all client-generated UUIDs.
-- The sync queue sends the workout tree keyed by these UUIDs; `apps/api` **upserts on
-  `client_uuid`**, resolving parent references via a client→server id map. A retried set-log
-  after a flaky ack hits the existing `client_uuid` → **no duplicate row** (testing §4.6).
-- Secondary natural key `(session_exercise_id, set_number)` remains unique as a second guard.
-- `apps/api` returns the canonical row on a duplicate `client_uuid` (`200`), or `409 CONFLICT`
-  resolved to it (`api.md §5`).
+### D-e. Idempotency key for queued/retried writes. **Yes — a client-generated key on every offline-creatable row** (reconciled with Dwight D1/D2).
+- `workout_sessions` → `unique (user_id, client_uuid)` (Dwight D1).
+- `workout_session_exercises` → `unique (session_id, client_uuid)` (Dwight D2 — needed because
+  `(session_id, position)` mutates on reorder and the same exercise can appear twice).
+- `workout_sets` → the replay key is **`(session_exercise_id, set_number)`** with a
+  **client-assigned, retry-stable `set_number`**; server upserts `ON CONFLICT` on it (Dwight).
+  `set_number` client-ownership is the invariant: if the server auto-incremented it, a retry
+  would become a duplicate set.
+- The sync queue sends the workout tree keyed by these client ids; `apps/api` **upserts** and
+  resolves parent references via a client→server id map. A retried set-log after a flaky ack
+  hits the existing key → **no duplicate row** (testing §4.6). Duplicate → canonical row (`200`)
+  or `409 CONFLICT` resolved to it (`api.md §5`).
 
 ---
 

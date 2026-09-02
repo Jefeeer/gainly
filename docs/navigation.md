@@ -111,6 +111,7 @@ Writes to `profiles` (+`nutrition_goals`) on completion → sets `onboarding_com
 |---|---|
 | Profile | avatar, name, goal, level, height/weight, units, frequency, subscription, connected services (§29) |
 | Settings | Account · Units · Notifications · Privacy · Connected Apps · Theme · Subscription · Help · About · Logout · Delete Account (§30) |
+| Settings > About > Open Source Licenses | **MVP scope, not future (G-12, human-ratified).** Credits Bryl Lim + Everkinetic for the 906 exercise illustrations (76 Everkinetic-derived), and surfaces CC BY-SA 4.0 terms for the imagery alongside MIT for the code — legal requirement per the WG image-licensing ruling, does not get cut under scope pressure. Content sourced from Dwight's `workout-guide-integration.md` compliance checklist (authoritative). Design = Jim; do not build ahead of his spec. |
 | Goals | fitness goals CRUD (§21) |
 | Subscription / Paywall | Free / Pro (§43) — post-MVP entitlement gate |
 
@@ -125,6 +126,16 @@ Detail shows the gain. **Every step in §81 (L2795) is a reachable screen above.
 
 ---
 
+## 6. Component-inventory alignment
+
+Every screen in §4 composes primitives from Jim's `design-system.md` component inventory — this
+doc names *screens and routes*, not components; Jim's doc names *components*, not screens. Where
+a screen needs a component that doesn't yet exist in `design-system.md` (e.g. the exercise
+illustration component with render-time tinting, or an Open Source Licenses list item), that is a
+gap in his inventory to flag, not a reason to invent an ad-hoc one-off component here. Screens
+composing existing primitives is the default; a new named component only gets added when no
+existing one fits — same ownership boundary as `A2`/`A3` below.
+
 ## Assumptions & flagged contradictions
 - **A1** §7 says "approximately five" tabs — adopted exactly 5 (Home/Workout/Progress/
   Nutrition/Profile). Goals/Subscription live under Profile, not as tabs (§7 L390).
@@ -132,4 +143,10 @@ Detail shows the gain. **Every step in §81 (L2795) is a reachable screen above.
   timer/persistence overlay behavior (§12, §39) works from anywhere. Design treatment = Jim.
 - **A3** Exercise picker/details screens are listed but their illustration/animation behavior
   is Dwight's (§13A). Referenced, not specified here.
+- **A4 Component alignment.** Every screen above composes only components in Jim's
+  `design-system.md §6` inventory (`SetRow`, `RestTimer`, `ExerciseCard`, `ExerciseIllustration`,
+  `MetricCard`, `ChartShell`, `EmptyState`, `ErrorState`, `Card`, `BottomSheet`, etc.) — no screen
+  references a component nobody specified. `ExerciseIllustration` renders WG frames **verbatim
+  with render-time tint** (no pre-baked recolour — CC BY-SA ShareAlike, god-ratified). The
+  Exercise Picker/Details modals and Active-Workout logger map to those contracts.
 - No navigation-specific contradictions beyond the shared greenfield note (C1).

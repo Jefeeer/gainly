@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@gainly/config": "workspace:*",
-    "typescript": "7.0.2"
+    "eslint": "10.9.1",
+    "typescript": "6.0.3"
   }
 }

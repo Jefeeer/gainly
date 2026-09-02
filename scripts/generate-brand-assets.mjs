@@ -301,18 +301,24 @@ async function main() {
 
   const markExtractRect = { left: markBox.minX, top: markBox.minY, width: markBox.w, height: markBox.h };
 
-  // iOS app icon: opaque 1024x1024, dark-bg-token background, mark at 70% width, no alpha channel
-  const iconMarkBuf = await sharp(Buffer.from(outRGBA_dark), { raw: { width, height, channels: 4 } })
-    .extract(markExtractRect)
-    .resize({ width: Math.round(1024 * 0.7) })
-    .png()
-    .toBuffer();
-  const iconMarkMeta = await sharp(iconMarkBuf).metadata();
-  await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { ...DARK_BG, alpha: 1 } } })
-    .composite([{ input: iconMarkBuf, left: Math.round((1024 - iconMarkMeta.width) / 2), top: Math.round((1024 - iconMarkMeta.height) / 2) }])
-    .flatten({ background: DARK_BG })
-    .png()
-    .toFile(path.join(OUT_DIR, "app-icon-ios-1024.png"));
+  // opaque square icon: dark-bg-token background, light-recolored mark at 70% width, no alpha channel.
+  // Reused for the iOS store icon AND the apple-touch-icon - both render badly with transparency
+  // (App Store rejects alpha outright; iOS home-screen icons composite transparent PNGs onto black).
+  async function opaqueIcon(size, filename) {
+    const markBuf = await sharp(Buffer.from(outRGBA_dark), { raw: { width, height, channels: 4 } })
+      .extract(markExtractRect)
+      .resize({ width: Math.round(size * 0.7) })
+      .png()
+      .toBuffer();
+    const meta = await sharp(markBuf).metadata();
+    await sharp({ create: { width: size, height: size, channels: 4, background: { ...DARK_BG, alpha: 1 } } })
+      .composite([{ input: markBuf, left: Math.round((size - meta.width) / 2), top: Math.round((size - meta.height) / 2) }])
+      .flatten({ background: DARK_BG })
+      .png()
+      .toFile(path.join(OUT_DIR, filename));
+  }
+  await opaqueIcon(1024, "app-icon-ios-1024.png");
+  await opaqueIcon(180, "apple-touch-icon-180.png");
 
   // android adaptive icon: 432x432 (108dp @4x), foreground mark within 66% safe-zone circle, separate flat background
   const ANDROID_SIZE = 432;
@@ -332,6 +338,24 @@ async function main() {
     .png()
     .toFile(path.join(OUT_DIR, "android-adaptive-background-432.png"));
 
+  // Android 13+ themed (monochrome) icon: the OS ignores RGB and re-tints by alpha alone,
+  // so this is the same mark silhouette flattened to a single flat color, alpha untouched.
+  const monoRaw = Buffer.from(outRGBA); // reuse natural-color alpha shape, just recolor RGB
+  for (let i = 0; i < monoRaw.length; i += 4) {
+    if (monoRaw[i + 3] === 0) continue;
+    monoRaw[i] = 255; monoRaw[i + 1] = 255; monoRaw[i + 2] = 255;
+  }
+  const monoMarkBuf = await sharp(monoRaw, { raw: { width, height, channels: 4 } })
+    .extract(markExtractRect)
+    .resize({ width: safeDiameter })
+    .png()
+    .toBuffer();
+  const monoMarkMeta = await sharp(monoMarkBuf).metadata();
+  await sharp({ create: { width: ANDROID_SIZE, height: ANDROID_SIZE, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: monoMarkBuf, left: Math.round((ANDROID_SIZE - monoMarkMeta.width) / 2), top: Math.round((ANDROID_SIZE - monoMarkMeta.height) / 2) }])
+    .png()
+    .toFile(path.join(OUT_DIR, "android-adaptive-monochrome-432.png"));
+
   // expo splash: transparent mark, moderate scale, meant for `contain` + configured backgroundColor.
   // Two variants since splash backgroundColor follows system theme (§31) - natural mark reads on light, recolored on dark.
   async function splashMark(buf, suffix) {
@@ -349,13 +373,35 @@ async function main() {
   await splashMark(outRGBA, "light");
   await splashMark(outRGBA_dark, "dark");
 
-  // favicons + apple touch icon, from the tight mark-transparent crop
+  // favicons (browser tabs render transparent PNGs fine - no black-fill problem like iOS home screen)
   for (const size of [16, 32, 48]) {
     await sharp(markTransparent).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png().toFile(path.join(OUT_DIR, `favicon-${size}.png`));
   }
-  await sharp(markTransparent).resize(180, 180, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png().toFile(path.join(OUT_DIR, "apple-touch-icon-180.png"));
+
+  // Emit into each consuming app's asset dir - single source of truth, re-run this script after any
+  // logo change instead of hand-copying (see design-system.md S10 for the tradeoff this settles).
+  const MOBILE_DIR = path.join(REPO_ROOT, "apps", "mobile", "assets", "images");
+  const WEB_APP_DIR = path.join(REPO_ROOT, "apps", "web", "app");
+  const ADMIN_APP_DIR = path.join(REPO_ROOT, "apps", "admin", "app");
+  if (fs.existsSync(path.join(REPO_ROOT, "apps", "mobile"))) {
+    fs.mkdirSync(MOBILE_DIR, { recursive: true });
+    const copy = (src, dest) => fs.copyFileSync(path.join(OUT_DIR, src), path.join(MOBILE_DIR, dest));
+    copy("app-icon-ios-1024.png", "icon.png"); // used for both expo.icon and expo.ios.icon - opaque, no Icon Composer bundle
+    copy("android-adaptive-foreground-432.png", "android-icon-foreground.png");
+    copy("android-adaptive-background-432.png", "android-icon-background.png");
+    copy("android-adaptive-monochrome-432.png", "android-icon-monochrome.png");
+    copy("splash-mark-light-1200.png", "splash-icon.png");
+    copy("splash-mark-dark-1200.png", "splash-icon-dark.png");
+    copy("favicon-48.png", "favicon.png");
+    console.log("emitted mobile icon/splash assets to", MOBILE_DIR);
+  }
+  for (const dir of [WEB_APP_DIR, ADMIN_APP_DIR]) {
+    if (!fs.existsSync(dir)) continue;
+    fs.copyFileSync(path.join(OUT_DIR, "favicon-48.png"), path.join(dir, "icon.png")); // Next.js file-convention metadata icon
+    fs.copyFileSync(path.join(OUT_DIR, "apple-touch-icon-180.png"), path.join(dir, "apple-icon.png"));
+    console.log("emitted web icon assets to", dir);
+  }
 
   const manifest = {
     generatedFrom: SRC,

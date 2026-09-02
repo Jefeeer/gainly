@@ -135,3 +135,82 @@ for a greenfield build (no rows yet).
 - **Jan (schema):** apply D1–D4 (§4).
 - **Me (Dwight):** owns this doc; will fold the same rulings into `api.md`'s service contracts only if god wants
   them there too (told him where it landed).
+
+---
+
+## 6. Workout Guide sync-scope trigger (`enforce_wg_sync_scope`) — G-14 (authoritative)
+
+The WG-sync invariant (an import may only create/modify `source='workout_guide'` rows, never user
+data) is enforced by a **trigger, not RLS**: the importer runs as `service_role`, which bypasses RLS
+and every policy, so a role-scoped policy is silently inert against the exact actor it targets. A
+`before insert/update/delete` row trigger fires for all roles. Canonical SQL + pgTAP live in
+`rls.md §8`; this section is the authoritative semantics.
+
+### Two-guard design (why)
+- **Guard 1 — `source` is immutable on an existing row, always on, no flag, fail-closed.** An UPDATE
+  may never change `exercises.source`. This *structurally* kills the hijack (below) for every actor,
+  independent of whether the importer set its context flag. `is distinct from` makes it null-safe.
+- **Guard 2 — flag-gated import scope, defense-in-depth.** Inside an import txn (`set local
+  app.import_context='workout_guide'`), only `source='workout_guide'` rows may be touched at all, for
+  any field. Reads OLD on DELETE, NEW on INSERT/UPDATE.
+
+Compatibility: guard 1 breaks no current write pattern — the importer only inserts new WG rows or
+updates their non-`source` metadata, and no MVP user/admin flow mutates `source`. The only future
+feature that would need to change `source` is "admin promotes a custom exercise into the shared
+library"; if ever built it must be a deliberate, separately-audited operation with its own narrow
+context, **not** a loosening of guard 1.
+
+### Verdicts on the four reviewed defects
+1. **`new.source` on DELETE — fix adopted, "error" severity refuted.** On DELETE, NEW is SQL NULL but
+   typed to the table rowtype, so `new.source` is NULL (not an error) and the old `coalesce(new.source,
+   old.source)` correctly yielded `old.source`. The read worked; the pattern was fragile. Replaced with
+   an explicit `TG_OP` branch that never references NEW on DELETE.
+2. **`return coalesce(new, old)` — fix adopted, "silently cancels in practice" refuted.** It is
+   type-valid and, since one of NEW/OLD is always non-null in a row trigger, never returned NULL in
+   normal operation. But it leans on the "a row is NULL iff all its fields are NULL" footgun; a future
+   refactor could make it return NULL and a NULL return from a BEFORE row trigger silently cancels the
+   write. Replaced with explicit `return old` (DELETE) / `return new`.
+3. **The bypass — CONFIRMED, real.** On UPDATE `new.source` is non-null, so `coalesce(new.source,
+   old.source)` only ever tested NEW. An import could UPDATE a `source='user'` row while setting
+   `new.source='workout_guide'`; the check passed and the user's row was hijacked into the WG library.
+   Closed two ways now: guard 1 (source can't change at all) and guard 2 (new.source must be WG).
+4. **Fail-open — CONFIRMED; ruling: split the invariant.** The two-guard design moves the headline
+   corruption (source hijack) onto the always-on, fail-closed guard 1, so a forgotten `set local` can
+   no longer cause it. Guard 2 remains flag-gated and is therefore still fail-open by nature — see
+   residual weakness.
+
+### What this protects against — and what it does NOT
+It **prevents**, for every role including `service_role`: (a) ever changing an existing row's `source`
+(so no user↔WG hijack in either direction), and (b) an import transaction touching, inserting, or
+deleting any non-`workout_guide` row. It does **NOT** protect against a write that both (i) omits
+`set local app.import_context='workout_guide'` **and** (ii) leaves `source` unchanged: guard 2 is
+inert without the flag and guard 1 only bites on source changes, so an importer that forgets its flag
+could still UPDATE a user row's *non-source* fields. This residual gap is largely irreducible — the DB
+cannot recognize "an import" unless the caller declares itself — but it is bounded to non-source-field
+edits and is covered by the importer's own `WHERE source='workout_guide'` scoping as a third layer. If
+stronger closure is ever required, run the importer under a dedicated least-privilege login (not
+`service_role`) and add an RLS `with check (source='workout_guide' and created_by is null)` on top;
+that role/policy are out of scope until such a rework.
+
+### G-14 addendum — INSERT case (Oscar G-17 A3), closed by a CHECK
+The trigger did NOT cover a plain user INSERT: guard 1 is UPDATE-only, guard 2 fires only inside an
+import transaction, and `exercises.ins_own_custom`'s `with check` says nothing about `source` — so a
+user could `insert ... source='workout_guide', created_by=self, is_custom=true`. Not a cross-user leak
+(`sel_active_public` requires `created_by is null`, so the row stays in the author's own view) but it
+violates the WG-source invariant and would confuse importer reconciliation, `unique(external_source,
+external_slug)`, analytics, and any "is this a library exercise" check.
+
+Closed by an **always-on table CHECK** (sibling to guard 1, no flag, unbypassable by any role incl
+`service_role`, can't be forgotten):
+```sql
+alter table exercises
+  add constraint exercises_wg_source_is_library
+  check (source <> 'workout_guide' or created_by is null);
+```
+Rationale: a `workout_guide` row is by definition a global library row, so `source='workout_guide'` ⟹
+`created_by IS NULL` — exactly what `sel_active_public` already keys on. True by construction: the
+importer inserts library rows with `created_by=null`; custom exercises use `source='user'`. A CHECK is
+strictly better than trigger logic here because the rule is single-row (references only the new row's
+own columns) and a table constraint cannot be role-bypassed or forgotten. Canonical home is the
+`exercises` DDL in `database.md` (Jan mirrors it; rollback = `drop constraint
+exercises_wg_source_is_library`). pgTAP T7 in `rls.md §8` covers it.
