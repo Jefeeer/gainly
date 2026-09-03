@@ -125,9 +125,13 @@ is server-authoritative. Fail-closed revoke-then-grant (same shape as profiles A
 revoke update on workout_sessions from authenticated;
 grant  update (name, notes, status, started_at, ended_at, template_id, program_day_id, client_uuid)
   on workout_sessions to authenticated;
--- duration_seconds, total_sets, completed_sets, total_reps, total_volume, user_id, id, created_at,
--- updated_at are NOT granted → writable only by the service role (finish/metrics job). A future
--- cached-aggregate column inherits deny-by-default.
+-- G-40: lock the 5 metrics on INSERT too, not just UPDATE — otherwise a client sets them at creation.
+revoke insert on workout_sessions from authenticated;
+grant  insert (user_id, name, notes, status, started_at, ended_at, template_id, program_day_id, client_uuid)
+  on workout_sessions to authenticated;                 -- = the update allow-list PLUS user_id, MINUS the 5 metrics
+-- duration_seconds, total_sets, completed_sets, total_reps, total_volume, id, created_at, updated_at
+-- are NOT granted on insert or update → writable only by the service role (finish/metrics job). A
+-- future cached-aggregate column inherits deny-by-default.
 ```
 
 **`health_connections` — provider-asserted columns are service-role-write-only** (G-29, MEDIUM).
@@ -137,8 +141,13 @@ user may assert** — a real hole if any code ever gates on `scopes`. Fail-close
 ```sql
 revoke update on health_connections from authenticated;
 grant  update (is_enabled) on health_connections to authenticated; -- user may only toggle on/off
--- provider is set on INSERT (ins_own with check user_id=auth.uid()); scopes + last_synced_at are
--- service-role-only (written by the HealthSyncService), never client-asserted.
+-- G-40: lock scopes + last_synced_at on INSERT too — the prior comment wrongly said provider is set
+-- on INSERT via ins_own, which described the UNFIXED state where a client could set `scopes` at
+-- first insert. The migration is correct; this is the doc catching up.
+revoke insert on health_connections from authenticated;
+grant  insert (user_id, provider, is_enabled) on health_connections to authenticated;
+-- scopes + last_synced_at are NOT granted on insert or update → service-role-only (HealthSyncService),
+-- never client-asserted.
 ```
 
 ---
@@ -323,6 +332,11 @@ So, as a rule (a rule survives a new table; a static list does not):
 > For any table, **revoke each WRITE operation (INSERT/UPDATE/DELETE) that has NO permissive
 > policy**, derived from that table's actual policy set. (SELECT is governed by its own policy /
 > force-RLS; this ruling addresses the write-recurrence path — the bug class we have now hit 4×.)
+>
+> **COROLLARY (G-40) — a column restriction must cover EVERY verb that can write the column.**
+> Locking a column on UPDATE alone leaves the value settable on INSERT. So a partial-column grant
+> (e.g. workout_sessions, health_connections in §1) needs a matching `revoke insert` + column-scoped
+> `grant insert`, not just the UPDATE pair.
 
 Derived for today's tables (recompute per table, never assume):
 ```sql
