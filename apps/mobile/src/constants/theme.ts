@@ -7,20 +7,21 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+// Gainly brand tokens - source of truth is docs/design-system.md, keep these in sync with it.
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#293034',
+    background: '#F7F8F7',
+    backgroundElement: '#F0F2EF',
+    backgroundSelected: '#EAF9EF',
+    textSecondary: '#6B746E',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#EDEFEC',
+    background: '#0F1211',
+    backgroundElement: '#1F2321',
+    backgroundSelected: '#153322',
+    textSecondary: '#9AA69F',
   },
 } as const;
 
