@@ -2,12 +2,12 @@
   "name": "gainly",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "dev:mobile": "turbo run dev --filter=mobile",
-    "dev:web": "turbo run dev --filter=web",
-    "dev:admin": "turbo run dev --filter=admin",
-    "dev:api": "turbo run dev --filter=api",
+    "build": "dotenv -e .env.local -- turbo run build",
+    "dev": "dotenv -e .env.local -- turbo run dev",
+    "dev:mobile": "dotenv -e .env.local -- turbo run dev --filter=mobile",
+    "dev:web": "dotenv -e .env.local -- turbo run dev --filter=web",
+    "dev:admin": "dotenv -e .env.local -- turbo run dev --filter=admin",
+    "dev:api": "dotenv -e .env.local -- turbo run dev --filter=api",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -17,6 +17,7 @@
     "exercises:import": "node scripts/import-workout-guide.ts"
   },
   "devDependencies": {
+    "dotenv-cli": "11.0.0",
     "prettier": "3.9.6",
     "turbo": "^2.10.12",
     "typescript": "6.0.3"
