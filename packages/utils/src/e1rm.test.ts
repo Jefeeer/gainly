@@ -8,7 +8,7 @@
 //
 // Assumed signature: `calculateE1RM(weight: number, reps: number): number`.
 import { describe, expect, it } from 'vitest';
-import { calculateE1RM } from './e1rm';
+import { calculateE1RM } from './e1rm.js';
 
 describe('calculateE1RM (docs/workout-semantics.md §2)', () => {
   it('applies the Epley formula for reps > 1 (100kg x 5 -> 116.67)', () => {

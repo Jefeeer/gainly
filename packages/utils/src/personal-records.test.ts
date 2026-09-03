@@ -13,7 +13,7 @@
 //     weight === null bucket) before applying isNewPersonalRecord — this is what makes
 //     "highest reps" mean "at that weight," not "at any weight."
 import { describe, expect, it } from 'vitest';
-import { detectMaxRepsPR, isNewPersonalRecord } from './personal-records';
+import { detectMaxRepsPR, isNewPersonalRecord } from './personal-records.js';
 
 describe('isNewPersonalRecord (docs/workout-semantics.md §1.1 — strictly greater, never equal)', () => {
   it('flags a PR when the candidate strictly exceeds the current best', () => {
