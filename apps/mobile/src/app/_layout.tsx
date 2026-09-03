@@ -24,7 +24,10 @@ export default function RootLayout() {
           headerTintColor: theme.text,
           headerShadowVisible: false,
         }}>
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="workout/active" options={{ title: 'Active Workout' }} />
         <Stack.Screen name="attribution" options={{ title: 'Open Source Licenses' }} />
       </Stack>
     </ThemeProvider>

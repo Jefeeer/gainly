@@ -15,6 +15,10 @@ export const Colors = {
     backgroundElement: '#F0F2EF',
     backgroundSelected: '#EAF9EF',
     textSecondary: '#6B746E',
+    primary: '#15803D',
+    primarySubtle: '#16A34A',
+    // Button label color on a `primary` fill - white on light-mode green passes AA (5.02:1).
+    onPrimary: '#FFFFFF',
   },
   dark: {
     text: '#EDEFEC',
@@ -22,6 +26,10 @@ export const Colors = {
     backgroundElement: '#1F2321',
     backgroundSelected: '#153322',
     textSecondary: '#9AA69F',
+    primary: '#4ADE80',
+    primarySubtle: '#4ADE80',
+    // White-on-#4ADE80 fails AA - dark-mode button labels use bg/base (near-black) instead.
+    onPrimary: '#0F1211',
   },
 } as const;
 
