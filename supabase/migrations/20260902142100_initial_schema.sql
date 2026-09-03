@@ -856,7 +856,14 @@ grant  update (username, display_name, avatar_url, date_of_birth, biological_sex
 revoke update on workout_sessions from authenticated;
 grant  update (name, notes, status, started_at, ended_at, template_id, program_day_id, client_uuid)
   on workout_sessions to authenticated;
--- 5 cached metrics + user_id/id/created_at/updated_at NOT granted -> service-role (finish job) only.
+-- G-39: lock the 5 metrics on INSERT too — ins_own's `with check (user_id=auth.uid())` has no column
+-- restriction and no BEFORE-INSERT trigger nulls them, so without this a client could INSERT bogus
+-- aggregates AND set status='completed' in the same row, bypassing the finish job that would recompute.
+-- Insert allow-list = the UPDATE allow-list PLUS user_id (ins_own needs it), MINUS the 5 metrics.
+revoke insert on workout_sessions from authenticated;
+grant  insert (user_id, name, notes, status, started_at, ended_at, template_id, program_day_id, client_uuid)
+  on workout_sessions to authenticated;
+-- 5 cached metrics + id/created_at/updated_at NOT granted on insert OR update -> service-role (finish job) only.
 
 -- health_connections: last_synced_at (sync job) and scopes (provider-granted, least-privilege) are
 -- not the user's to assert. UPDATE: only is_enabled. INSERT: only user_id (RLS ins_own needs it),
