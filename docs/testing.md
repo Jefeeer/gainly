@@ -288,25 +288,31 @@ A phase is not done until:
 5. No `TODO` left in code covering core functionality (§103 explicit rule).
 6. A human (or reviewing agent) has read the diff — not just seen green CI.
 
-**CI merge gate (GitHub Actions, §69)** — a PR cannot merge unless, in order:
-1. Install deps
-2. Lint
-3. Type check
-4. Unit tests (Vitest, all `packages/*`)
-5. RN component tests (Jest/jest-expo, `apps/mobile`)
-6. Web component tests (Vitest, `apps/web`, `apps/admin`)
-7. pgTAP RLS suite against a fresh local Supabase instance (migrations applied from scratch — this doubles
-   as migration-verification from §69)
-8. Integration suite (supabase-js against the same local instance)
-9. Build (all apps)
-10. Security checks (§69 — dependency audit + the service-role-key-in-client-bundle grep from §4.5)
+**CI merge gate (GitHub Actions, §69)** — a PR cannot merge unless every step below exits 0, in order.
+Commands are what actually runs (via Turborepo at the root unless noted); thresholds are exact, not "mostly
+passing." **Wiring status as of G-38 (2026-09-03): steps 1-4 are being wired now under G-37 (Darryl). Steps
+5-8 are specified here as the design target — they are not yet wired into any CI config, and nothing in this
+list is enforced by an actual pipeline yet.** Update this table's status column instead of the prose above it
+as each step lands, so it never silently drifts back into aspirational text.
+
+| # | Step | Command | Threshold | Status |
+|---|---|---|---|---|
+| 1 | Install deps | `pnpm install --frozen-lockfile` | exit 0 | in flight (G-37) |
+| 2 | Lint | `pnpm lint` (= `turbo run lint`, each package's `eslint . --max-warnings 0`) | 0 errors, 0 warnings | in flight (G-37) |
+| 3 | Type check | `pnpm typecheck` (= `turbo run typecheck`, each package's `tsc --noEmit`) | 0 errors, strict mode, no new `any` (§91) | in flight (G-37) |
+| 4 | Unit + component tests | `pnpm test` (= `turbo run test`: Vitest for `packages/*`/`apps/web`/`apps/admin`, Jest+jest-expo for `apps/mobile`) | 100% of tests green, 0 skipped without a `// TODO(reason)` comment | in flight (G-37); first real specs are `packages/utils/src/e1rm.test.ts` + `packages/utils/src/personal-records.test.ts` (G-38, currently RED — no runner, no implementation yet) |
+| 5 | pgTAP RLS suite | `pg_prove supabase/tests/rls/*.sql` (or the Supabase CLI equivalent) against a fresh local Postgres, migrations applied from scratch | 100% of assertions green (all `plan(N)` counts satisfied) | **not wired** — suite exists (`supabase/tests/rls/*.sql`, 12 files) but is deliberately UNRUN; no local Docker/Supabase stack exists yet, and running it requires per-run human authorization (hosted-project safety rule) |
+| 6 | Integration suite | `pnpm test:integration` (name TBD when wired) — two real authenticated supabase-js clients against the same local instance as step 5 | 100% green, cross-user access denial confirmed for every §4.5 table | **not wired** — needs the same local Supabase stack as step 5 |
+| 7 | Build | `pnpm build` (= `turbo run build`, all apps) | exit 0, no build warnings treated as errors per app's own config | **not wired** |
+| 8 | Security checks | dependency audit (`pnpm audit` or equivalent) + the service-role-key-in-client-bundle grep from §4.5 | 0 high/critical advisories; grep finds zero matches in `apps/mobile`/`apps/web` build output | **not wired** |
 
 **Not on every PR** (too slow, run on a schedule + pre-release instead, but still block release):
-- Maestro mobile E2E suite, including the named MVP-loop test (§3)
-- Playwright web E2E suite
+- Maestro mobile E2E suite, including the named MVP-loop test (§3) — **not wired**.
+- Playwright web E2E suite — **not wired**.
 
 Any release build (App Store/Play/production web deploy) is blocked unless the E2E suite, including the
-MVP-loop test by name, is green on the exact commit being shipped.
+MVP-loop test by name, is green on the exact commit being shipped. This rule applies once E2E is wired; today
+there is no release build to gate.
 
 ---
 
