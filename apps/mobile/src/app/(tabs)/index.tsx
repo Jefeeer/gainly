@@ -1,5 +1,3 @@
-import { Link } from 'expo-router';
-
 import { Card } from '@/components/card';
 import { EmptyState } from '@/components/empty-state';
 import { Screen } from '@/components/screen';
@@ -28,12 +26,6 @@ export default function HomeScreen() {
           ctaHref="/workout"
         />
       </Card>
-
-      <Link href="/attribution">
-        <ThemedText type="link" themeColor="textSecondary">
-          About &amp; Open Source Licenses
-        </ThemedText>
-      </Link>
     </Screen>
   );
 }
