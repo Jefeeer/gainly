@@ -31,18 +31,19 @@ role or JWT claim the user can set (§5 L297).
 Applies to: `profiles`* , `user_settings`, `user_goals`, `nutrition_goals`,
 `notification_preferences`, `body_measurements`, `weight_logs`,
 `water_logs`, `meals`, `food_logs`, `daily_activity`, `exercise_favorites`, `device_tokens`,
-`health_connections`, `workout_sessions`, `personal_records`†, `workout_templates`* , `programs`.
+`health_connections`, `workout_sessions`, `workout_templates`* , `programs`.
 
-> **`subscriptions` is deliberately NOT here** — A2 FIX (Oscar G-17 CRITICAL). Under this generic
-> owner pattern a user could `update subscriptions set plan='pro', status='active',
-> current_period_end='2099-01-01' where user_id=auth.uid()` and RLS would allow it → free Pro,
-> and any server-side Pro gate reading this table is defeated. It is now **SELECT-own only, all
-> writes via service role** (Stripe webhook) — see §5.
->
-> **†`personal_records` is user-writable here, which lets a user fabricate PRs.** Self-only vanity
-> data (low severity), but it contradicts PR detection being server-side business logic
-> (`workout-semantics.md`, `database.md §10`). **Flagged for Dwight** — if PR writes should be
-> service-role-only too, move `personal_records` to the §5 shape. Not changed here (his call).
+> **`subscriptions` and `personal_records` are deliberately NOT here** — both are SELECT-own with
+> service-role-only writes (see §5).
+> - `subscriptions` — A2 FIX (Oscar G-17 CRITICAL). Owner-writable would let a user
+>   `update subscriptions set plan='pro', status='active' …` → free Pro, defeating any server-side
+>   Pro gate. Writes are the Stripe webhook only.
+> - `personal_records` — RULED G-26 (god). PRs are **derived** data computed server-side from
+>   logged sets. Owner-writable is both an integrity bug (a user can fabricate a PR that
+>   contradicts their own set history) and a **correctness** bug: the offline model is
+>   last-write-wins by `updated_at`, so a client-written PR and a server-computed PR have no
+>   defined precedence. Same class as A2. Client keeps SELECT-own (the UI can show an optimistic
+>   local PR and let the server confirm), so nothing breaks.
 
 ```sql
 -- generic owner policy (user_id column). profiles uses id instead of user_id.
@@ -67,16 +68,40 @@ create policy upd_self on profiles for update using (id = auth.uid() and deleted
 -- ALLOW it (they own the row; id is unchanged). is_admin() then returns true, granting catalog
 -- write + sel_admin on admin_audit_logs (other users' resource_ids/metadata = indirect leak).
 -- Column privileges are checked INDEPENDENTLY of RLS and cannot be re-granted by a careless
--- future policy — this column REVOKE is the primary, durable control (prose is not a control):
-revoke update (is_admin)   on profiles from authenticated;  -- promotion is service-role-only
-revoke update (deleted_at) on profiles from authenticated;  -- user can't self-undelete past grace
+-- future policy — this is the primary, durable control (prose is not a control).
+-- HARDENING (Oscar G-21): FAIL CLOSED, not open. An enumerated `revoke update (is_admin)` leaves
+-- any FUTURE column (is_moderator, verified_coach, stripe_customer_id, …) writable until someone
+-- remembers to revoke it. Instead revoke ALL update, then allow-list only the user-editable
+-- columns — a new column is then non-writable by users until explicitly granted.
+revoke update on profiles from authenticated;
+grant  update (username, display_name, avatar_url, date_of_birth, biological_sex, height_cm,
+               fitness_goal, experience_level, measurement_system, training_days_per_week,
+               onboarding_completed_at)
+  on profiles to authenticated;
+-- is_admin, deleted_at, id, created_at, updated_at are intentionally NOT in the grant list →
+-- user-writable only via service role. New privileged columns inherit deny-by-default.
 
--- Defense-in-depth trigger (the revoke above is primary; this also catches a mistaken re-GRANT):
+-- Defense-in-depth trigger (the grant list above is primary; this catches a mistaken re-GRANT).
+-- Symmetric: guards BOTH privileged self-service columns.
 create or replace function guard_profiles_privileged_cols() returns trigger
 language plpgsql as $$
 begin
-  if new.is_admin is distinct from old.is_admin and not is_admin() then
-    raise exception 'is_admin is not self-writable';
+  -- G-23 FIX: gate on current_user, NOT is_admin() alone. Under service_role auth.uid() is NULL,
+  -- so is_admin() (= coalesce((select is_admin from profiles where id=auth.uid()), false)) is
+  -- ALWAYS false — a bare `not is_admin()` would fire for service_role and BLOCK the two writes
+  -- this guard exists to PERMIT: the §7 soft-delete (`set deleted_at`) and the §1 service-role-only
+  -- promotion (`set is_admin`), and would make first-admin bootstrap impossible. Gating on
+  -- `current_user = 'authenticated'` fires for exactly the client role the guard defends and never
+  -- for service_role, postgres, or a migration. (Function is NOT security definer, so current_user
+  -- is the calling role.) `request.jwt.role` GUC was rejected: a direct/psql/pgTAP connection never
+  -- sets it, so that predicate would still fire on migrations.
+  if current_user = 'authenticated' and not is_admin() then
+    if new.is_admin   is distinct from old.is_admin   then
+      raise exception 'is_admin is not self-writable';
+    end if;
+    if new.deleted_at is distinct from old.deleted_at then
+      raise exception 'deleted_at is not self-writable';
+    end if;
   end if;
   return new;
 end $$;
@@ -85,6 +110,36 @@ create trigger trg_guard_profiles_privileged before update on profiles
 ```
 Protects everything §34 L1660 lists: workouts, body metrics, nutrition, health, goals,
 profile, subscriptions, custom exercises.
+
+**`workout_sessions` — derived-aggregate columns are service-role-write-only** (G-29, the THIRD
+instance of the server-authoritative-data-left-client-writable class, after A2 subscriptions and
+G-26 personal_records). `duration_seconds, total_sets, completed_sets, total_reps, total_volume`
+are cached aggregates computed server-side on finish (`database.md §7`, §81) from `workout_sets`.
+`upd_own` (the generic §1 pattern) permits UPDATE with no column restriction, so without this a
+client could write bogus aggregates. **Distinction — same bug class, two correct mechanisms:**
+`workout_sessions` keeps a COLUMN grant because users genuinely own *some* of its columns (name,
+notes, status, times); `personal_records` loses ALL client writes (§5) because the *whole table*
+is server-authoritative. Fail-closed revoke-then-grant (same shape as profiles A1):
+
+```sql
+revoke update on workout_sessions from authenticated;
+grant  update (name, notes, status, started_at, ended_at, template_id, program_day_id, client_uuid)
+  on workout_sessions to authenticated;
+-- duration_seconds, total_sets, completed_sets, total_reps, total_volume, user_id, id, created_at,
+-- updated_at are NOT granted → writable only by the service role (finish/metrics job). A future
+-- cached-aggregate column inherits deny-by-default.
+```
+
+**`health_connections` — provider-asserted columns are service-role-write-only** (G-29, MEDIUM).
+`last_synced_at` is written by the sync job; **`scopes` is what the PROVIDER granted, not what the
+user may assert** — a real hole if any code ever gates on `scopes`. Fail-closed revoke-then-grant:
+
+```sql
+revoke update on health_connections from authenticated;
+grant  update (is_enabled) on health_connections to authenticated; -- user may only toggle on/off
+-- provider is set on INSERT (ins_own with check user_id=auth.uid()); scopes + last_synced_at are
+-- service-role-only (written by the HealthSyncService), never client-asserted.
+```
 
 ---
 
@@ -167,19 +222,27 @@ create policy upd_own_custom on exercises for update
   using (created_by = auth.uid()) with check (created_by = auth.uid());
 create policy admin_all on exercises for all
   using (is_admin()) with check (is_admin());         -- §41 admin manages library
--- A5 FIX (Oscar G-17): direct fetch of an archived exercise in history — scoped to exercises that
--- appear in the CALLER'S OWN sessions. Deletes the service-role resolver (an IDOR: fetch-by-id via
--- service role bypasses RLS and could return another user's PRIVATE custom exercise). This policy
--- exposes only exercises the caller actually used, archived-global or otherwise.
+-- A5 FIX v2 (Oscar G-21): direct fetch of an ARCHIVED GLOBAL exercise in history. MUST be scoped
+-- to `created_by is null` (global library) — WITHOUT it this policy is itself an IDOR: the FK
+-- exercises(id) does NOT enforce RLS, so an attacker who learns a victim's private custom
+-- exercise uuid X (leaked via the public template/program sharing this doc plans, or any
+-- feed/PR surface) can insert workout_session_exercises{session=OWN, exercise_id=X} — own_via_session
+-- only checks session ownership, not exercise_id visibility — then select X and this policy would
+-- match. Restricting to `created_by is null` (and archived rows only) closes it; a user's OWN
+-- custom rows are already covered by sel_own_custom, so nothing legitimate is lost.
 create policy sel_archived_in_history on exercises for select
-  using (exists (select 1 from workout_session_exercises se
+  using (exercises.created_by is null                      -- global library rows only (kills the IDOR)
+     and not exercises.is_active                           -- gap-fill: active globals already via sel_active_public
+     and exists (select 1 from workout_session_exercises se
                  join workout_sessions s on s.id = se.session_id
                  where se.exercise_id = exercises.id and s.user_id = auth.uid()));
 ```
 Archived global exercises (`is_active=false`, `created_by is null`) stay readable **inside
 history** two ways: the common path joins through the owned session (no fresh `exercises` select),
-and a direct fetch-by-id is covered by `sel_archived_in_history` above. **No service-role resolver
-is used** for this (§87 L2892) — that path was an IDOR and is removed from `api.md`.
+and a direct fetch-by-id is covered by `sel_archived_in_history` above — now strictly scoped to
+global rows, so injecting another user's custom `exercise_id` into an owned session no longer
+leaks it. **No service-role resolver is used** for this (§87 L2892) — that path was an IDOR and is
+removed from `api.md`.
 
 ### exercise_muscles / exercise_aliases (follow parent)
 ```sql
@@ -198,17 +261,34 @@ create policy write_via_owner on exercise_aliases for all
 ```sql
 create policy sel_catalog_or_own on foods for select
   using (created_by is null or is_verified or created_by = auth.uid());
--- A4 FIX (Oscar G-17): sel_catalog_or_own exposes is_verified rows to EVERYONE, and without the
--- `is_verified is not true` guard a user could `update foods set is_verified=true` to publish their
--- own food into the global trusted catalog. Column REVOKE is wrong here (admins verify via the same
--- `authenticated` role, so a revoke would block them too) — instead force the column false in the
--- USER policies and let `admin_all` (is_admin()) be the only path that sets it true.
+-- A4 FIX (Oscar G-17, refined G-21): sel_catalog_or_own exposes is_verified rows to EVERYONE, so a
+-- user must not be able to set/keep is_verified=true on their own food. Column REVOKE is wrong here
+-- (admins verify via the same `authenticated` role, so a revoke would block them too).
+-- G-21 refinement: an unconditional `with check (is_verified is not true)` had a functional
+-- side-effect — once an admin verified a user's food, the user could NEVER edit that row again
+-- (every update failed the check). Fix: policies check only ownership; a TRIGGER blocks non-admin
+-- is_verified TRANSITIONS (and non-admin INSERT with is_verified=true), so a user CAN still edit
+-- other fields of a verified food, but cannot flip verification.
 -- (`foods.is_verified` already `not null default false` in database.md:447, so INSERT defaults safe.)
-create policy ins_own on foods for insert
-  with check (created_by = auth.uid() and is_verified is not true);
+create policy ins_own on foods for insert with check (created_by = auth.uid());
 create policy upd_own on foods for update using (created_by = auth.uid())
-                                     with check (created_by = auth.uid() and is_verified is not true);
+                                     with check (created_by = auth.uid());
 create policy admin_all on foods for all using (is_admin()) with check (is_admin()); -- only admins verify
+
+create or replace function guard_foods_verified() returns trigger
+language plpgsql as $$
+begin
+  if not is_admin() then
+    if tg_op = 'INSERT' and coalesce(new.is_verified, false) then
+      raise exception 'is_verified may only be set by an admin';
+    elsif tg_op = 'UPDATE' and new.is_verified is distinct from old.is_verified then
+      raise exception 'is_verified transitions are admin-only';
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger trg_guard_foods_verified before insert or update on foods
+  for each row execute function guard_foods_verified();
 ```
 
 ### workout_templates public sharing (post-MVP)
@@ -234,6 +314,33 @@ create policy admin_write on <lookup> for all using (is_admin()) with check (is_
 
 ## 5. Write-only / restricted tables
 
+**HOUSE PATTERN (G-29 ruling — double-gate service-role-write surfaces with a REVOKE).** Force-RLS
+with no write policy denies client writes *today*, but that is SINGLE-GATED: Supabase auto-grants
+INSERT/UPDATE/DELETE to `authenticated` on every new public table, so the moment anyone adds a
+permissive write policy the sitting grant re-opens writes instantly. Same reasoning as profiles A1.
+So, as a rule (a rule survives a new table; a static list does not):
+
+> For any table, **revoke each WRITE operation (INSERT/UPDATE/DELETE) that has NO permissive
+> policy**, derived from that table's actual policy set. (SELECT is governed by its own policy /
+> force-RLS; this ruling addresses the write-recurrence path — the bug class we have now hit 4×.)
+
+Derived for today's tables (recompute per table, never assume):
+```sql
+-- personal_records — policy set = SELECT-own only  → no write policy → revoke all writes
+revoke insert, update, delete on personal_records from authenticated, anon;
+-- subscriptions — policy set = SELECT-own only      → revoke all writes
+revoke insert, update, delete on subscriptions      from authenticated, anon;
+-- analytics_events — HAS ins_own (INSERT) policy    → keep insert; revoke the rest
+revoke update, delete            on analytics_events  from authenticated, anon;
+-- admin_audit_logs — policy set = sel_admin (SELECT) only → no write policy → revoke all writes
+revoke insert, update, delete on admin_audit_logs   from authenticated, anon;
+```
+
+⚠️ **TRAP — revoke from `authenticated` (and `anon`) ONLY. NEVER `service_role`, NEVER `public`.**
+`bypassrls` does NOT bypass GRANTs — `service_role` needs its grant intact. A revoke aimed at
+`public` (or at `service_role`) breaks every server-side write and will look like an RLS bug when
+it is a grant bug.
+
 ```sql
 -- analytics_events: user may insert own; NO client select (backend/PostHog read via service role)
 create policy ins_own on analytics_events for insert
@@ -249,7 +356,41 @@ create policy sel_admin on admin_audit_logs for select using (is_admin());
 -- role (which bypasses RLS). Moved out of §1 so the generic owner pattern cannot re-grant writes.
 create policy sel_own on subscriptions for select using (user_id = auth.uid());
 -- (no ins/upd/del policy → any client write is denied by default-deny)
+
+-- personal_records: RULED G-26 (god). DERIVED data — computed server-side from logged sets by
+-- PersonalRecordService (workout-semantics.md, database.md §10). SELECT-own only; writes via
+-- service role only. Owner-writable would allow fabricated PRs AND has no LWW precedence vs the
+-- server-computed row (correctness bug, same class as A2). NB: PR creation now DEPENDS on the
+-- server-side detection existing — a missing feature is the correct trade against fabricated data.
+create policy sel_own on personal_records for select using (user_id = auth.uid());
+-- (no ins/upd/del policy → clients cannot write; PR rows are inserted by the service role only)
 ```
+
+**Two non-RLS caveats (Oscar G-28) — RLS alone does NOT cover these:**
+- **App-layer ownership check (PersonalRecordService).** A PR's `workout_set_id` FK guarantees the
+  set EXISTS, not that it belongs to the same `user_id`. The service MUST validate
+  `workout_set → session.user_id == personal_records.user_id` before insert. Easy to lose when the
+  change is framed as "just an RLS edit" — it is an application invariant, not an RLS one.
+- **⚠️ WARNING — do NOT add an `updated_at` column to `personal_records`.** It has none today, by
+  design. The offline last-write-wins-by-`updated_at` ambiguity is fixed by **removing the client
+  as a writer** (above), collapsing to a single writer. Adding an `updated_at` tiebreaker would
+  re-admit the client as a writer and leave the forgery hole wide open. The fix is one-writer, not
+  a better tiebreaker.
+- **`workout_set_id` MUST always be populated by PersonalRecordService.** `pr_dedupe_by_set` is a
+  PARTIAL unique (`where workout_set_id is not null`), so a null-set PR (from a backfill or manual
+  path) dedupes against nothing and a retried finish escapes the guard. No PR-insert path may leave
+  `workout_set_id` null.
+
+**ACCEPTED RESIDUAL RISK (G-29 ruling — conscious acceptance, not an oversight).** Making PR writes
+server-only makes a PR *consistent with the user's own logged sets*, NOT *unforgeable*. Forgery
+moves UP to `workout_sets`, which is correctly client-writable — a user can log a fabricated set
+(weight 999, reps 1, completed) and PersonalRecordService will derive a legitimate-looking PR. This
+is **accepted as correct for a personal tracker**: you cannot RLS away a user lying about their own
+workout, and plausibility limits now would reject real outliers and annoy honest users. **TRIGGER
+CONDITION (the line that turns this from accepted-risk into a defect if crossed):** *if PRs ever
+feed a CROSS-USER surface — leaderboard, social comparison, coach dashboard, public profile — THEN
+`workout_sets` becomes the trust boundary and needs server-side plausibility bounds at the set or
+PR-derivation layer.* There are none today beyond the `>= 0` CHECKs (`database.md §7`).
 
 ---
 
@@ -277,18 +418,39 @@ create policy avatars_del on storage.objects for delete
 -- exercise-media: public SELECT (using bucket_id='exercise-media'); write via is_admin() only.
 ```
 
+**A9 implementation note (Oscar G-21):** `(storage.foldername(name))[1]` is the object key's **first
+path segment**, so upload code MUST key objects as `<uid>/filename`, e.g. `avatars/<uid>/me.jpg`
+→ store the object at key `<uid>/me.jpg` in the `avatars` bucket. If the key starts with anything
+other than the uid (e.g. the bucket name, or a flat filename), the check reads the wrong segment
+and either denies everything or, worse, matches unintended paths. Whoever writes the upload path
+owns keying it `<uid>/…`.
+
 ---
 
 ## 7. Account deletion (§90 L2938) — decision D-a (see `database.md §13`)
 
 Two-step, **hard-delete wins for the account** (§90) while *content* soft-deletes (§87):
-1. **Soft window:** on user request, revoke the refresh token + set `profiles.deleted_at`. The
-   `and deleted_at is null` clause in the profiles policies (§1) makes the account's data
-   immediately **unreadable** via RLS. A7 correction (Oscar G-17): the access JWT is **stateless
-   and stays valid until its TTL** — deletion is not instantaneously "unauthenticable." What
-   actually happens: refresh is revoked so no new access token is minted, and the short access-token
-   TTL bounds the residual window; during it, RLS already returns zero rows for the account, so no
-   private data is served. Not a loophole, but stated honestly.
+1. **Soft window:** on user request, revoke the refresh token + set `profiles.deleted_at`.
+   (This `set deleted_at` write runs via service role and is UNBLOCKED by the G-23 guard fix in §1 —
+   the guard now only fires for `current_user = 'authenticated'`, so service-role deletion succeeds.)
+   A7 correction (Oscar G-17, refined G-21 — stated precisely, no overclaim):
+   - The **`profiles` row is immediately invisible**: only the profiles policies carry the
+     `deleted_at is null` predicate, so the account's profile returns zero rows at once.
+   - **Non-profile owner rows are NOT immediately cut off**, but the exposure differs by table:
+     - *Owner-writable tables* — `workout_sessions`, `workout_sets`, `body_measurements`,
+       `weight_logs`, `food_logs`, `meals`, `water_logs`, `daily_activity`, `user_goals` etc. filter
+       on `user_id = auth.uid()` with **no `deleted_at` check**, so a still-valid access JWT keeps
+       both **reading and writing** that user's OWN rows until the token's TTL.
+     - *Service-role-write-only tables* — `personal_records` and `subscriptions` are SELECT-own with
+       zero client write policies (§5, A2 + G-26), so the window is a **READ** exposure only for
+       these two; a client cannot write them regardless of the token.
+     Either way it is **same-user only, no cross-user leak**, and bounded by access-token TTL, not
+     instantaneous.
+   - The access JWT is stateless; revoking refresh stops new tokens, and the short access-token TTL
+     bounds the residual window. If instantaneous cutoff on all owner data is ever required, gate
+     the sensitive owner policies on
+     `exists (select 1 from profiles p where p.id = auth.uid() and p.deleted_at is null)` — new
+     machinery, deliberately NOT added for MVP; the honest TTL-bounded wording above is the stance.
 2. **Hard purge:** an `apps/api` service-role job deletes the `auth.users` row after the grace
    window (or immediately on "delete now"); `on delete cascade` from `profiles` removes every
    owner row (sessions, sets, PRs, body, nutrition, goals, subscriptions, devices, health) — no

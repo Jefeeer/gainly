@@ -225,7 +225,10 @@ create table exercises (
   constraint exercises_slug_scope_unique unique nulls not distinct (slug, created_by),
   -- import idempotency (Dwight G-3): one row per external asset. Both cols null for gainly-source
   -- rows, and Postgres treats NULLs as distinct, so only imported rows are constrained.
-  constraint exercises_external_unique unique (external_source, external_slug)
+  constraint exercises_external_unique unique (external_source, external_slug),
+  -- WG-source invariant (mirrored from rls.md §8, Oscar G-17 A3): a workout_guide row is ALWAYS a
+  -- global library row. Enforced on INSERT+UPDATE for every role incl service_role. Canonical home.
+  constraint exercises_wg_source_is_library check (source <> 'workout_guide' or created_by is null)
 );
 
 -- 5.2 exercise_muscles — junction, primary+secondary (§13 L593, §33)
@@ -381,7 +384,11 @@ create table workout_sets (
 create table personal_records (                        -- §16 auto-detected
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references profiles(id) on delete cascade,
-  exercise_id   uuid not null references exercises(id) on delete cascade,
+  exercise_id   uuid not null references exercises(id) on delete restrict, -- G-29 RULING (god): NOT cascade —
+  -- a hard-deleted exercise must not silently wipe a user's PR history. Exercises are normally SOFT-
+  -- deleted (is_active=false), so restrict costs nothing on the normal path; workout_session_exercises
+  -- already uses restrict (house pattern); restrict FAILS LOUD so an admin confronts that history
+  -- references the row. NOT set null — a PR is meaningless without its exercise (§101 data integrity).
   pr_type       pr_type not null,
   value         numeric not null,                      -- kg / reps / volume / distance / seconds
   reps          int,                                   -- rep count (the value for max_reps); context for weight/e1RM PRs
@@ -396,6 +403,14 @@ create table personal_records (                        -- §16 auto-detected
 -- workout_set_id is nullable (on delete set null) and NULLs would otherwise collide.
 create unique index pr_dedupe_by_set on personal_records (workout_set_id, pr_type)
   where workout_set_id is not null;
+-- ⚠️ personal_records deliberately has NO updated_at column (G-29 / Oscar G-28). Do NOT add one to
+-- "fix" offline LWW: the fix is single-writer (client cannot write; see rls.md §5), not a tiebreaker.
+-- App-layer invariants (PersonalRecordService): (1) validate workout_set_id's set belongs to the
+-- same user_id — the FK proves existence, not ownership; (2) ALWAYS populate workout_set_id — this
+-- index is PARTIAL (where not null), so a null-set PR dedupes against nothing and a retried finish
+-- escapes it. Accepted residual: PRs are consistent-with-own-log, not unforgeable (forgery moves to
+-- client-writable workout_sets) — accepted for a personal tracker; revisit if PRs feed any
+-- CROSS-USER surface (leaderboard/social/coach). Full note: rls.md §5.
 ```
 
 `workout_session_exercises.exercise_id` uses `on delete restrict` and exercises are
@@ -615,11 +630,15 @@ read paths in `api.md`; no speculative indexes.
 | Table | Stance |
 |---|---|
 | profiles, user_settings, user_goals, notification_preferences, nutrition_goals | owner-only (`user_id/id = auth.uid()`) |
-| workout_sessions, workout_session_exercises, workout_sets, personal_records | owner-only (child tables join to parent's `user_id`) |
+| workout_session_exercises, workout_sets | owner-only (child tables join to parent's `user_id`) |
+| workout_sessions | owner-only, BUT cached-aggregate columns (`duration_seconds, total_sets, completed_sets, total_reps, total_volume`) are service-role-write-only via a column grant — see `rls.md §1` (G-29) |
+| personal_records | SELECT-own; writes service-role only (derived data, computed server-side) — see `rls.md §5` (RULED G-26) |
 | workout_templates, workout_template_exercises | owner-only; +public read when `visibility='public'` |
 | programs, program_weeks, program_days, program_workouts | owner-only via program.user_id |
 | body_measurements, weight_logs, daily_activity, water_logs, meals, food_logs | owner-only |
-| exercise_favorites, device_tokens, health_connections, subscriptions | owner-only |
+| exercise_favorites, device_tokens | owner-only |
+| health_connections | owner-only, BUT `scopes` + `last_synced_at` are service-role-write-only (provider-asserted / sync-job) via a column grant — user may only write `is_enabled` — see `rls.md §1` (G-29) |
+| subscriptions | SELECT-own; writes service-role only (Stripe webhook) — see `rls.md §5` (Oscar G-17 A2) |
 | exercises | public read where `is_active`; owner read/write own custom (`created_by=auth.uid()`); admin write all |
 | exercise_muscles, exercise_aliases | public read; write follows parent exercise ownership |
 | foods | public read catalog (`created_by is null` or verified); owner read/write own custom |
