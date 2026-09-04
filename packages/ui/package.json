@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./*": "./src/*.tsx"
+    "./*": [
+      "./src/*.ts",
+      "./src/*.tsx"
+    ]
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
