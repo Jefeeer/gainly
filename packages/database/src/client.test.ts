@@ -3,7 +3,7 @@
 // wrong-shaped env var fails LOUD and EARLY with a named, actionable error instead of surfacing
 // later as a confusing `undefined` auth failure.
 import { describe, expect, it } from 'vitest';
-import { resolveSupabaseConfig } from './client.js';
+import { resolveSupabaseConfig } from './client';
 
 // Public, non-secret fixtures. The project ref is public (docs); the key is an obvious fake that
 // only has to match the sb_publishable_ shape — never a real key value in a fixture.
