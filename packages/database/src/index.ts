@@ -1,2 +1,2 @@
-// @gainly/database — Supabase client + typed DB access. Phase 1 stub; schema is owned by G-1.
-export {};
+// @gainly/database — Supabase client + typed DB access. Schema types owned by G-1 (needs live DB).
+export { createSupabaseClient, resolveSupabaseConfig, type SupabaseConfig } from './client.js';
