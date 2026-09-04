@@ -50,6 +50,27 @@ describe('resolveSupabaseConfig — fail loud & early (G-47)', () => {
     ).toThrow(/Malformed Supabase URL|must use https/);
   });
 
+  // G-49 (Oscar's finding): scheme-only validation accepted ANY https host, so a lookalike or
+  // wrong-project host baked into the env would receive plaintext credentials. The host must be
+  // constrained, not just the scheme.
+  it('rejects a well-formed https URL whose host is NOT *.supabase.co', () => {
+    expect(() =>
+      resolveSupabaseConfig({
+        NEXT_PUBLIC_SUPABASE_URL: 'https://evil.example.com',
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: KEY_OK,
+      }),
+    ).toThrow(/supabase\.co|custom .*domains? .*unsupported/i);
+  });
+
+  it('rejects a lookalike host that only ends in "supabase.co" without the dot boundary', () => {
+    expect(() =>
+      resolveSupabaseConfig({
+        NEXT_PUBLIC_SUPABASE_URL: 'https://evilsupabase.co',
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: KEY_OK,
+      }),
+    ).toThrow(/supabase\.co/i);
+  });
+
   it('rejects a legacy JWT (eyJ) key, saying legacy keys are disabled', () => {
     expect(() =>
       resolveSupabaseConfig({

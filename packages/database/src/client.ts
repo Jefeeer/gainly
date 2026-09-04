@@ -66,6 +66,19 @@ export function resolveSupabaseConfig(env: EnvSource = defaultEnv()): SupabaseCo
       `[@gainly/database] Supabase URL must use https, got "${parsed.protocol}". Value: ${url}`,
     );
   }
+  // Constrain the HOST, not just the scheme: Supabase auth POSTs the user's email + password to
+  // whatever host is configured, so a lookalike or wrong-project https host would leak plaintext
+  // credentials. Require a <ref>.supabase.co host (leading dot boundary rejects `evilsupabase.co`).
+  // Custom Supabase domains are intentionally unsupported — GAINLY is hosted on *.supabase.co and a
+  // custom domain is not on the roadmap; the message says so, so this isn't mistaken for a bug.
+  const host = parsed.hostname;
+  if (host === '.supabase.co' || !host.endsWith('.supabase.co')) {
+    throw new Error(
+      `[@gainly/database] Supabase URL host "${host}" is not a *.supabase.co host. Custom Supabase ` +
+        `domains are intentionally unsupported (GAINLY is hosted on *.supabase.co); this rejects a ` +
+        `lookalike or wrong-project host that would receive plaintext credentials. Value: ${url}`,
+    );
+  }
 
   // Legacy JWT keys (eyJ...) were disabled on this project — reject with a message that says so,
   // so the next person gets the answer, not a silent auth failure.
