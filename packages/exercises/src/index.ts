@@ -1,2 +1,4 @@
-// @gainly/exercises — exercise source / alias / muscle & equipment mapping model. Phase 1 stub.
-export {};
+// @gainly/exercises — Gainly's exercise layer. The workout-guide provider is the single isolation
+// seam over @bryllim/workout-guide (in-memory catalog: normalize/search/filter over 302 exercises).
+// Extensionless re-export is deliberate (bundler/vitest resolution; see @gainly/database).
+export * from './workout-guide';
