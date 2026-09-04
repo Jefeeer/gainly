@@ -480,7 +480,7 @@ create table analytics_events (
 
 create table admin_audit_logs (
   id            uuid primary key default gen_random_uuid(),
-  admin_user_id uuid not null references profiles(id) on delete set null,
+  admin_user_id uuid references profiles(id) on delete set null,  -- nullable: audit row survives actor deletion (§90 hard-delete); drops actor link, keeps the action record
   action        text not null,
   resource_type text not null,
   resource_id   uuid,

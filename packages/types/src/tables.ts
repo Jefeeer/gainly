@@ -442,7 +442,7 @@ export interface AnalyticsEvent {
 
 export interface AdminAuditLog {
   id: string;
-  admin_user_id: string;
+  admin_user_id: string | null; // on delete set null — audit row survives actor deletion (§90)
   action: string;
   resource_type: string;
   resource_id: string | null;
