@@ -1,17 +1,19 @@
+/**
+ * Exercise Search — search/browse screen with WG provider integration.
+ * Fixed: use FlatList as root instead of nesting inside Screen's ScrollView.
+ */
+
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { workoutGuideProvider, type Exercise } from '@gainly/exercises';
-
-const DEBOUNCE_MS = 200;
 
 export default function ExerciseSearchScreen() {
   const theme = useTheme();
@@ -49,8 +51,8 @@ export default function ExerciseSearchScreen() {
     [],
   );
 
-  return (
-    <Screen>
+  const ListHeader = useMemo(() => () => (
+    <View>
       {/* Search input */}
       <View style={[styles.searchContainer, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundElement }]}>
         <TextInput
@@ -98,12 +100,16 @@ export default function ExerciseSearchScreen() {
       <ThemedText type="small" themeColor="textSecondary" style={styles.count}>
         {results.length} exercise{results.length !== 1 ? 's' : ''}
       </ThemedText>
+    </View>
+  ), [query, selectedMuscle, facets.primaryMuscles, results.length, theme]);
 
-      {/* Exercise list */}
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
         data={results}
         keyExtractor={(item) => item.slug}
         renderItem={renderItem}
+        ListHeaderComponent={ListHeader}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -116,14 +122,19 @@ export default function ExerciseSearchScreen() {
           </View>
         }
       />
-    </Screen>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   searchContainer: {
     borderRadius: Spacing.two,
     borderWidth: 1,
+    marginHorizontal: Spacing.three,
+    marginTop: Spacing.two,
   },
   searchInput: {
     height: 44,
@@ -133,6 +144,7 @@ const styles = StyleSheet.create({
   chipList: {
     gap: Spacing.two,
     paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
   },
   chip: {
     paddingHorizontal: Spacing.three,
@@ -141,9 +153,11 @@ const styles = StyleSheet.create({
   },
   count: {
     marginBottom: Spacing.one,
+    paddingHorizontal: Spacing.three,
   },
   list: {
-    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.four,
   },
   row: {
     flexDirection: 'row',
