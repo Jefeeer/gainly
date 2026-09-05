@@ -8,6 +8,7 @@ export default function WorkoutLayout() {
       <Stack.Screen name="programs/index" options={{ title: 'Programs' }} />
       <Stack.Screen name="search/index" options={{ title: 'Find Exercise' }} />
       <Stack.Screen name="search/[slug]" options={{ title: 'Exercise Detail' }} />
+      <Stack.Screen name="summary" options={{ title: 'Workout Summary', headerShown: false }} />
     </Stack>
   );
 }
