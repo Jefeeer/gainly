@@ -3,16 +3,12 @@
  *
  * "Auth/onboarding gating is done once in app/_layout.tsx:
  *  no session → (auth); session but onboarding_completed_at is null → (onboarding); else (tabs)."
- *
- * Three route groups, selected by a single Redirect based on auth state.
- * SplashScreen handles the initial load; this layout only routes after auth is resolved.
  */
 
-import { Redirect, Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View } from 'react-native';
 
 import { AuthProvider } from '@/providers/auth-provider';
 import { useAuth } from '@/stores/auth';
@@ -23,45 +19,50 @@ SplashScreen.preventAutoHideAsync();
 function AuthGate() {
   const status = useAuth((s) => s.status);
   const user = useAuth((s) => s.user);
+  const router = useRouter();
+  const segments = useSegments();
 
   useEffect(() => {
-    // Hide splash once auth state is resolved (not loading)
     if (status !== 'loading') {
       SplashScreen.hideAsync();
     }
   }, [status]);
 
-  // Still determining session — keep splash visible
-  if (status === 'loading') return null;
+  useEffect(() => {
+    if (status === 'loading') return;
 
-  // Unauthenticated → auth stack
-  if (status === 'unauthenticated') {
-    return <Redirect href="/(auth)/welcome" />;
-  }
+    const inAuthGroup = segments[0] === '(auth)';
+    const inOnboardingGroup = segments[0] === '(onboarding)';
 
-  // Authenticated but onboarding not completed → onboarding stack
-  if (user && !user.onboardingCompletedAt) {
-    return <Redirect href="/(onboarding)/goal" />;
-  }
+    if (status === 'unauthenticated' && !inAuthGroup) {
+      router.replace('/(auth)/welcome');
+    } else if (status === 'authenticated' && user && !user.onboardingCompletedAt && !inOnboardingGroup) {
+      router.replace('/(onboarding)/goal');
+    } else if (status === 'authenticated' && user && user.onboardingCompletedAt && (inAuthGroup || inOnboardingGroup)) {
+      router.replace('/(tabs)');
+    }
+  }, [status, user, segments]);
 
-  // Authenticated and onboarded → main app
-  return <Redirect href="/(tabs)" />;
+  return null;
 }
 
 export default function RootLayout() {
   return (
     <AuthProvider>
       <StatusBar style="light" />
-      <View style={{ flex: 1, backgroundColor: Colors.dark.background }}>
-        <AuthGate />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.dark.background } }}>
+      <AuthGate />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: Colors.dark.background },
+          animation: 'fade',
+        }}
+      >
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="workout/active" options={{ headerShown: true, title: 'Active Workout' }} />
-        <Stack.Screen name="attribution" options={{ headerShown: true, title: 'Open Source Licenses' }} />
       </Stack>
-      </View>
     </AuthProvider>
   );
 }
