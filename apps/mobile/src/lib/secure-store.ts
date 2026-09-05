@@ -1,37 +1,71 @@
 /**
  * SecureStore adapter for Supabase session persistence (security.md §3).
- * Auth tokens go in Keychain/Keystore-backed SecureStore, never AsyncStorage.
- * Draft workout data stays in SQLite/MMKV — separate concern.
+ * Gracefully handles Expo Go where native SecureStore module isn't available.
+ * In demo mode, falls back to in-memory storage.
  */
-
-import * as SecureStore from 'expo-secure-store';
 
 import type { StorageAdapter } from '@supabase/ssr';
 
-const EXPO_KEYS = {
-  accessToken: 'sb-access-token',
-  refreshToken: 'sb-refresh-token',
-};
+// In-memory fallback for Expo Go (no native SecureStore)
+const memoryStore = new Map<string, string>();
+
+let secureStoreAvailable = false;
+let SecureStore: typeof import('expo-secure-store') | null = null;
+
+// Try to load SecureStore — fails in Expo Go
+try {
+  SecureStore = require('expo-secure-store');
+  // Test if the native module is actually available
+  if (typeof SecureStore?.getItemAsync === 'function') {
+    secureStoreAvailable = true;
+  }
+} catch {
+  secureStoreAvailable = false;
+}
+
+function logFallback(key: string) {
+  if (!secureStoreAvailable) {
+    console.log(`[secure-store] Expo Go fallback: using memory for "${key}"`);
+  }
+}
 
 export const secureStoreAdapter: StorageAdapter = {
   getItem: async (key: string) => {
-    const value = await SecureStore.getItemAsync(key);
-    return value;
+    logFallback(key);
+    if (secureStoreAvailable && SecureStore) {
+      return await SecureStore.getItemAsync(key);
+    }
+    return memoryStore.get(key) ?? null;
   },
   setItem: async (key: string, value: string) => {
-    await SecureStore.setItemAsync(key, value);
+    logFallback(key);
+    if (secureStoreAvailable && SecureStore) {
+      await SecureStore.setItemAsync(key, value);
+    } else {
+      memoryStore.set(key, value);
+    }
   },
   removeItem: async (key: string) => {
-    await SecureStore.deleteItemAsync(key);
+    logFallback(key);
+    if (secureStoreAvailable && SecureStore) {
+      await SecureStore.deleteItemAsync(key);
+    } else {
+      memoryStore.delete(key);
+    }
   },
 };
 
 /**
- * Clear all auth tokens from SecureStore (used on logout).
+ * Clear all auth tokens (used on logout).
  */
 export async function clearAuthTokens(): Promise<void> {
-  await Promise.all([
-    SecureStore.deleteItemAsync(EXPO_KEYS.accessToken).catch(() => {}),
-    SecureStore.deleteItemAsync(EXPO_KEYS.refreshToken).catch(() => {}),
-  ]);
+  if (secureStoreAvailable && SecureStore) {
+    await Promise.all([
+      SecureStore.deleteItemAsync('sb-access-token').catch(() => {}),
+      SecureStore.deleteItemAsync('sb-refresh-token').catch(() => {}),
+    ]);
+  } else {
+    memoryStore.delete('sb-access-token');
+    memoryStore.delete('sb-refresh-token');
+  }
 }
