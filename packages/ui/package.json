@@ -4,10 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./*": [
-      "./src/*.ts",
-      "./src/*.tsx"
-    ]
+    "./tokens": "./src/tokens.ts",
+    "./*": "./src/*.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
