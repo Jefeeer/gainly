@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/stores/auth';
 
 export default function ProfileScreen() {
-  const { colors } = useTheme();
+  const colors = useTheme();
   const router = useRouter();
   const user = useAuth((s) => s.user);
 
@@ -25,58 +25,63 @@ export default function ProfileScreen() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <ThemedText type="h1">Profile</ThemedText>
-          <TouchableOpacity style={[styles.settingsBtn, { backgroundColor: colors.surface }]}>
+          <View>
+            <ThemedText type="h1" style={styles.title}>PROFILE</ThemedText>
+            <ThemedText type="small" themeColor="textMuted">Your account</ThemedText>
+          </View>
+          <TouchableOpacity style={[styles.settingsBtn, { backgroundColor: colors.card }]}>
             <Ionicons name="settings-outline" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
 
         {/* User Card */}
-        <View style={[styles.userCard, { backgroundColor: colors.primary + '10' }]}>
-          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <ThemedText type="h1" style={{ color: '#fff' }}>
+        <View style={[styles.userCard, { backgroundColor: colors.primary }]}>
+          <View style={[styles.avatar, { backgroundColor: 'rgba(0,0,0,0.2)' }]}>
+            <ThemedText type="h1" style={{ color: colors.onPrimary }}>
               {(user?.displayName ?? 'DU').charAt(0).toUpperCase()}
             </ThemedText>
           </View>
           <View style={styles.userInfo}>
-            <ThemedText type="h3">{user?.displayName ?? 'Demo User'}</ThemedText>
-            <ThemedText type="small" themeColor="textMuted">{user?.email ?? 'demo@gainly.app'}</ThemedText>
+            <ThemedText type="h2" style={{ color: colors.onPrimary }}>{user?.displayName ?? 'Demo User'}</ThemedText>
+            <ThemedText type="small" style={{ color: colors.onPrimary, opacity: 0.7 }}>{user?.email ?? 'demo@gainly.app'}</ThemedText>
           </View>
-          <TouchableOpacity style={[styles.editBtn, { backgroundColor: colors.surface }]}>
-            <Ionicons name="pencil" size={16} color={colors.primary} />
+          <TouchableOpacity style={styles.editBtn}>
+            <Ionicons name="pencil" size={16} color={colors.onPrimary} />
           </TouchableOpacity>
         </View>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
-          <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
+          <View style={[styles.statItem, { backgroundColor: colors.card }]}>
             <ThemedText type="h2" style={{ color: colors.primary }}>0</ThemedText>
             <ThemedText type="small" themeColor="textMuted">Workouts</ThemedText>
           </View>
-          <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
-            <ThemedText type="h2" style={{ color: '#10B981' }}>0</ThemedText>
+          <View style={[styles.statItem, { backgroundColor: colors.card }]}>
+            <ThemedText type="h2" style={{ color: '#FFB800' }}>0</ThemedText>
             <ThemedText type="small" themeColor="textMuted">Day Streak</ThemedText>
           </View>
-          <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
-            <ThemedText type="h2" style={{ color: '#F59E0B' }}>0</ThemedText>
+          <View style={[styles.statItem, { backgroundColor: colors.card }]}>
+            <ThemedText type="h2" style={{ color: '#00F0FF' }}>0</ThemedText>
             <ThemedText type="small" themeColor="textMuted">PRs</ThemedText>
           </View>
         </View>
 
-        {/* Subscription Banner */}
-        <TouchableOpacity style={[styles.proBanner, { backgroundColor: colors.primary }]}>
+        {/* Pro Banner */}
+        <TouchableOpacity style={[styles.proBanner, { backgroundColor: colors.card }]}>
           <View style={styles.proContent}>
-            <Ionicons name="diamond" size={24} color="#fff" />
-            <View style={{ flex: 1 }}>
-              <ThemedText type="defaultBold" style={{ color: '#fff' }}>Gainly Pro</ThemedText>
-              <ThemedText type="small" style={{ color: '#fff', opacity: 0.8 }}>Unlock advanced features</ThemedText>
+            <View style={[styles.proIcon, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="diamond" size={24} color={colors.primary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#fff" />
+            <View style={{ flex: 1 }}>
+              <ThemedText type="defaultBold">GAINLY PRO</ThemedText>
+              <ThemedText type="small" themeColor="textMuted">Unlock advanced features</ThemedText>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </View>
         </TouchableOpacity>
 
         {/* Menu Items */}
-        <View style={[styles.menuCard, { backgroundColor: colors.surface }]}>
+        <View style={[styles.menuCard, { backgroundColor: colors.card }]}>
           {menuItems.map((item, i) => (
             <TouchableOpacity 
               key={i}
@@ -96,9 +101,9 @@ export default function ProfileScreen() {
         </View>
 
         {/* Sign Out */}
-        <TouchableOpacity style={[styles.signOutBtn, { backgroundColor: '#EF4444' + '10' }]}>
-          <Ionicons name="log-out" size={20} color="#EF4444" />
-          <ThemedText type="defaultBold" style={{ color: '#EF4444' }}>Sign Out</ThemedText>
+        <TouchableOpacity style={[styles.signOutBtn, { backgroundColor: '#FF4757' + '15' }]}>
+          <Ionicons name="log-out" size={20} color="#FF4757" />
+          <ThemedText type="defaultBold" style={{ color: '#FF4757' }}>SIGN OUT</ThemedText>
         </TouchableOpacity>
 
         {/* Version */}
@@ -121,9 +126,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingTop: 16,
-    paddingBottom: 20,
+    paddingBottom: 24,
+  },
+  title: {
+    letterSpacing: 2,
+    fontSize: 28,
   },
   settingsBtn: {
     width: 40,
@@ -135,38 +144,41 @@ const styles = StyleSheet.create({
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 16,
+    padding: 24,
+    borderRadius: 24,
+    marginBottom: 20,
     gap: 16,
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
   userInfo: {
     flex: 1,
+    gap: 4,
   },
   editBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   statsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   statItem: {
     flex: 1,
     padding: 16,
     borderRadius: 16,
     alignItems: 'center',
+    gap: 4,
   },
   proBanner: {
     padding: 16,
@@ -177,6 +189,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  proIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   menuCard: {
     borderRadius: 16,

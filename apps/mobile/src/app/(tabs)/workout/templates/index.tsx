@@ -1,6 +1,5 @@
 /**
- * Templates screen — §14: reusable workouts with CRUD and duplicate.
- * Shows preset templates (Push/Pull/Legs) and user-created templates.
+ * Templates screen — Dark premium design with neon accents.
  */
 
 import { useEffect, useState } from 'react';
@@ -14,12 +13,11 @@ import { useTemplates, type WorkoutTemplate } from '@/stores/templates';
 import { useActiveWorkout } from '@/stores/active-workout';
 
 export default function TemplatesScreen() {
-  const { colors } = useTheme();
+  const colors = useTheme();
   const router = useRouter();
   const { templates, initPresets, deleteTemplate, duplicateTemplate } = useTemplates();
   const { startWorkout, addExercise, addSet, hasActiveWorkout } = useActiveWorkout();
   const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
 
   useEffect(() => {
     initPresets();
@@ -64,7 +62,7 @@ export default function TemplatesScreen() {
   }
 
   const getTemplateColor = (index: number) => {
-    const colors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
+    const colors = ['#C8FF00', '#00F0FF', '#FF6B6B', '#FFB800', '#C8FF00'];
     return colors[index % colors.length];
   };
 
@@ -75,32 +73,26 @@ export default function TemplatesScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <ThemedText type="h2">Templates</ThemedText>
+        <ThemedText type="h2" style={styles.title}>TEMPLATES</ThemedText>
         <TouchableOpacity 
           style={[styles.addBtn, { backgroundColor: colors.primary }]}
           onPress={() => setShowCreate(!showCreate)}
         >
-          <Ionicons name="add" size={24} color="#fff" />
+          <Ionicons name="add" size={24} color={colors.onPrimary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Create New */}
         {showCreate && (
-          <View style={[styles.createCard, { backgroundColor: colors.surface }]}>
-            <ThemedText type="h3">New Template</ThemedText>
-            <View style={styles.createInput}>
+          <View style={[styles.createCard, { backgroundColor: colors.card }]}>
+            <ThemedText type="h3">NEW TEMPLATE</ThemedText>
+            <View style={[styles.createInput, { backgroundColor: colors.background }]}>
               <Ionicons name="create-outline" size={20} color={colors.textMuted} />
-              <ThemedText 
-                type="default"
-                style={[styles.nameInput, { color: colors.text }]}
-                onPress={() => {/* Would open modal */}}
-              >
-                {newName || 'Template name...'}
-              </ThemedText>
+              <ThemedText type="default" themeColor="textMuted">Template name...</ThemedText>
             </View>
             <TouchableOpacity style={[styles.createBtn, { backgroundColor: colors.primary }]}>
-              <ThemedText type="smallBold" style={{ color: '#fff' }}>Create</ThemedText>
+              <ThemedText type="smallBold" style={{ color: colors.onPrimary }}>CREATE</ThemedText>
             </TouchableOpacity>
           </View>
         )}
@@ -110,15 +102,15 @@ export default function TemplatesScreen() {
           {templates.map((template, index) => (
             <TouchableOpacity 
               key={template.id}
-              style={[styles.templateCard, { backgroundColor: colors.surface }]}
+              style={[styles.templateCard, { backgroundColor: colors.card }]}
               onPress={() => router.push(`/workout/templates/${template.id}`)}
             >
               {/* Template Header */}
               <View style={styles.templateHeader}>
-                <View style={[styles.templateIcon, { backgroundColor: getTemplateColor(index) + '15' }]}>
+                <View style={[styles.templateIcon, { backgroundColor: getTemplateColor(index) + '20' }]}>
                   <Ionicons 
                     name={template.isPreset ? 'star' : 'document-text'} 
-                    size={20} 
+                    size={24} 
                     color={getTemplateColor(index)} 
                   />
                 </View>
@@ -126,8 +118,8 @@ export default function TemplatesScreen() {
                   <View style={styles.templateTitleRow}>
                     <ThemedText type="defaultBold">{template.name}</ThemedText>
                     {template.isPreset && (
-                      <View style={[styles.presetBadge, { backgroundColor: '#F59E0B' + '15' }]}>
-                        <ThemedText type="small" style={{ color: '#F59E0B' }}>Preset</ThemedText>
+                      <View style={[styles.presetBadge, { backgroundColor: '#FFB800' + '20' }]}>
+                        <ThemedText type="small" style={{ color: '#FFB800' }}>PRESET</ThemedText>
                       </View>
                     )}
                   </View>
@@ -138,7 +130,7 @@ export default function TemplatesScreen() {
               </View>
 
               {/* Exercise Preview */}
-              <View style={styles.exercisePreview}>
+              <View style={[styles.exercisePreview, { backgroundColor: colors.background }]}>
                 {template.exercises.slice(0, 3).map((ex) => (
                   <View key={ex.id} style={styles.exerciseItem}>
                     <View style={[styles.exerciseDot, { backgroundColor: getTemplateColor(index) }]} />
@@ -163,8 +155,8 @@ export default function TemplatesScreen() {
                   style={[styles.startBtn, { backgroundColor: colors.primary }]}
                   onPress={() => handleStartFromTemplate(template)}
                 >
-                  <Ionicons name="play" size={16} color="#fff" />
-                  <ThemedText type="smallBold" style={{ color: '#fff' }}>Start</ThemedText>
+                  <Ionicons name="play" size={16} color={colors.onPrimary} />
+                  <ThemedText type="smallBold" style={{ color: colors.onPrimary }}>START</ThemedText>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -176,10 +168,10 @@ export default function TemplatesScreen() {
                 
                 {!template.isPreset && (
                   <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: '#EF4444' + '10' }]}
+                    style={[styles.actionBtn, { backgroundColor: '#FF4757' + '15' }]}
                     onPress={() => handleDelete(template)}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                    <Ionicons name="trash-outline" size={16} color="#FF4757" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -203,6 +195,9 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 20,
   },
+  title: {
+    letterSpacing: 2,
+  },
   addBtn: {
     width: 40,
     height: 40,
@@ -216,7 +211,7 @@ const styles = StyleSheet.create({
   },
   createCard: {
     padding: 20,
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 24,
     gap: 12,
   },
@@ -225,14 +220,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     padding: 16,
-    backgroundColor: '#F3F4F6',
     borderRadius: 12,
   },
-  nameInput: {
-    flex: 1,
-  },
   createBtn: {
-    padding: 12,
+    padding: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
@@ -251,9 +242,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   templateIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -275,7 +266,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
     padding: 12,
-    backgroundColor: '#F9FAFB',
     borderRadius: 12,
   },
   exerciseItem: {
