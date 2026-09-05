@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~0.2.0-canary-20260121-a63c0dd",
+    "@gainly/exercises": "workspace:*",
+    "@gainly/utils": "workspace:*",
     "@react-navigation/native": "^7.3.18",
     "@supabase/supabase-js": "^2.114.0",
     "expo": "~54.0.37",
