@@ -103,8 +103,29 @@ trial the app in the **Expo Go** client they already have, without building a de
   stable" means the template's *coherent* set, not newest-of-each.
 - `apps/admin` is deliberately a **mirror of `apps/web`**, not `create-next-app` output. Approved —
   it guarantees a consistent Next set. Don't "fix" it by regenerating.
-- Supabase is **local-only**. No hosted project exists. Never run `supabase link` or `db push` to a
-  cloud instance, and never consume real credentials — provisioning is a human action.
+## Supabase: HOSTED, and the API keys on disk are currently DEAD
+
+This section replaces an earlier one that said "Supabase is local-only, no hosted project exists."
+That is **no longer true** and following it would be wrong.
+
+- A **hosted** project exists (`ammtkgqkoahylbqfamsa`). There is **no local Docker stack** and no
+  `supabase start`, so there is **no `db reset` safety net** — a bad migration hits a real database
+  with no undo. **Never run `supabase link`, `db push`, `db reset`, or psql against it.** Applying a
+  migration is a privileged operation god authorises per-run. There is deliberately no `db:push`
+  script.
+- **`SUPABASE_ANON_KEY` / `EXPO_PUBLIC_…` / `NEXT_PUBLIC_…` in `.env.local` are currently INVALID.**
+  The human disabled the project's **legacy** JWT API keys, which deactivates both the `anon` and
+  `service_role` JWTs. If you wire a Supabase client right now you will get an auth error, and **the
+  bug will not be in your code** — do not spend tokens debugging it. Legacy keys are `eyJ…` JWTs;
+  the current key system is `sb_publishable_…` / `sb_secret_…` short strings, and migrating to those
+  is pending with the human.
+- `SUPABASE_DB_URL` **is** valid and unaffected — it is the session pooler (`:5432`, required for
+  DDL and prepared statements) and authenticates by database password, not by API key. So
+  DB/pgTAP-shaped work is not blocked by the key problem; API-key-shaped work is.
+- `SUPABASE_SERVICE_ROLE_KEY` is a full admin bypass of every RLS rule. Never commit it, never put
+  it in a message, and never write a fallback that silently proceeds without it. `.env.local` is
+  gitignored (`.gitignore:10`, verified) — keep real values only there, and `.env.example` only
+  ever carries placeholders that distinguish the client-safe key from the server-only one.
 
 ## Architecture
 
