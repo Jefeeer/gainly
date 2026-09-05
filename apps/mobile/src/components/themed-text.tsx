@@ -6,10 +6,14 @@ import { useTheme } from '@/hooks/use-theme';
 export type ThemedTextProps = TextProps & {
   type?:
     | 'default'
+    | 'defaultBold'
     | 'title'
     | 'subtitle'
+    | 'hero'
     | 'h1'
+    | 'h2'
     | 'h3'
+    | 'bodyStrong'
     | 'small'
     | 'smallBold'
     | 'link'
@@ -26,10 +30,14 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
       style={[
         { color: theme[themeColor ?? 'text'] },
         type === 'default' && styles.default,
+        type === 'defaultBold' && styles.defaultBold,
         type === 'title' && styles.title,
         type === 'subtitle' && styles.subtitle,
+        type === 'hero' && styles.hero,
         type === 'h1' && styles.h1,
+        type === 'h2' && styles.h2,
         type === 'h3' && styles.h3,
+        type === 'bodyStrong' && styles.bodyStrong,
         type === 'small' && styles.small,
         type === 'smallBold' && styles.smallBold,
         type === 'link' && styles.link,
@@ -58,6 +66,16 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: 500,
   },
+  defaultBold: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: 700,
+  },
+  bodyStrong: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: 600,
+  },
   title: {
     fontSize: 48,
     fontWeight: 600,
@@ -68,9 +86,20 @@ const styles = StyleSheet.create({
     lineHeight: 44,
     fontWeight: 600,
   },
+  hero: {
+    fontSize: 48,
+    lineHeight: 52,
+    fontWeight: 900,
+    letterSpacing: -1,
+  },
   h1: {
     fontSize: 28,
     lineHeight: 34,
+    fontWeight: 700,
+  },
+  h2: {
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: 700,
   },
   h3: {
