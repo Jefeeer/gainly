@@ -1,174 +1,136 @@
 /**
  * Body & Measurements — §20: weight, body fat, measurements.
- * §89: kg/lb, cm/inches support.
+ * Redesigned with muscle map visualization and stats summary.
  */
 
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-
-import { Button } from '@/components/button';
-import { Card } from '@/components/card';
-import { MetricCard } from '@/components/metric-card';
-import { Screen } from '@/components/screen';
-import { TextField } from '@/components/text-field';
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/use-theme';
-import { useBodyMetrics } from '@/stores/body-metrics';
+import { ThemedText } from '@/components/themed-text';
+import { MuscleMap, type MuscleActivation } from '@/components/muscle-map';
+import { StatsSummary } from '@/components/stats-summary';
+import { LevelBadge } from '@/components/level-badge';
+import { TimePeriodSelector, type TimePeriod } from '@/components/time-period-selector';
+import { useWorkoutHistory } from '@/stores/workout-history';
+
+// Mock muscle data - in real app, computed from workout history
+const MOCK_MUSCLES: MuscleActivation[] = [
+  { group: 'chest', level: 'gold' },
+  { group: 'shoulders', level: 'bronze' },
+  { group: 'biceps', level: 'bronze' },
+  { group: 'back', level: 'gold' },
+  { group: 'lats', level: 'bronze' },
+  { group: 'core', level: 'wood' },
+  { group: 'quads', level: 'gold' },
+  { group: 'hamstrings', level: 'bronze' },
+  { group: 'glutes', level: 'wood' },
+  { group: 'calves', level: 'wood' },
+  { group: 'traps', level: 'bronze' },
+  { group: 'triceps', level: 'gold' },
+  { group: 'rear_delts', level: 'wood' },
+  { group: 'forearms', level: 'none' },
+];
 
 export default function BodyMeasurementsScreen() {
-  const theme = useTheme();
-  const { logWeight, logMeasurement, getLatestWeight, getWeightHistory } = useBodyMetrics();
-  const [showLogWeight, setShowLogWeight] = useState(false);
-  const [showLogMeasurement, setShowLogMeasurement] = useState(false);
-  const [weightInput, setWeightInput] = useState('');
-  const [measurementInputs, setMeasurementInputs] = useState({
-    waist: '',
-    chest: '',
-    arms: '',
-    thighs: '',
-    hips: '',
-    neck: '',
-    bodyFat: '',
-  });
+  const colors = useTheme();
+  const router = useRouter();
+  const [period, setPeriod] = useState<TimePeriod>('month');
+  const { getWorkoutCount, getWeeklyStats } = useWorkoutHistory();
 
-  const latestWeight = getLatestWeight();
-  const weightHistory = getWeightHistory(30);
+  const weeklyStats = getWeeklyStats(4);
+  const totalWorkouts = getWorkoutCount();
+  const totalTime = weeklyStats.reduce((sum, w) => sum + w.totalDuration, 0) / 60;
+  const totalWeight = weeklyStats.reduce((sum, w) => sum + w.totalVolume, 0);
 
-  function handleLogWeight() {
-    const weight = parseFloat(weightInput);
-    if (!isNaN(weight) && weight > 0) {
-      logWeight(weight);
-      setWeightInput('');
-      setShowLogWeight(false);
-    }
-  }
-
-  function handleLogMeasurement() {
-    const data: Record<string, number | null> = {};
-    for (const [key, val] of Object.entries(measurementInputs)) {
-      const num = parseFloat(val);
-      data[key === 'bodyFat' ? 'bodyFatPct' : `${key}Cm`] = isNaN(num) ? null : num;
-    }
-    logMeasurement(data);
-    setMeasurementInputs({ waist: '', chest: '', arms: '', thighs: '', hips: '', neck: '', bodyFat: '' });
-    setShowLogMeasurement(false);
-  }
+  // Count muscle levels
+  const goldCount = MOCK_MUSCLES.filter((m) => m.level === 'gold').length;
+  const bronzeCount = MOCK_MUSCLES.filter((m) => m.level === 'bronze').length;
+  const woodCount = MOCK_MUSCLES.filter((m) => m.level === 'wood').length;
 
   return (
-    <Screen>
-      <ThemedText type="h1">Body & Measurements</ThemedText>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <ThemedText type="h2" style={styles.title}>BODY MAP</ThemedText>
+          <View style={{ width: 24 }} />
+        </View>
 
-      {/* Current weight */}
-      <View style={styles.statsRow}>
-        <MetricCard
-          value={latestWeight ? `${latestWeight.weightKg} kg` : '—'}
-          label="Current Weight"
+        {/* Time Period Selector */}
+        <TimePeriodSelector selected={period} onSelect={setPeriod} />
+
+        {/* Stats Summary */}
+        <StatsSummary
+          workouts={totalWorkouts}
+          timeMinutes={Math.round(totalTime)}
+          totalWeightKg={Math.round(totalWeight)}
         />
-        <MetricCard
-          value={weightHistory.length.toString()}
-          label="Entries (30d)"
-        />
-      </View>
 
-      {/* Log weight */}
-      <Card>
-        <Pressable onPress={() => setShowLogWeight(!showLogWeight)}>
-          <ThemedText type="h3">Log Weight</ThemedText>
-        </Pressable>
-        {showLogWeight ? (
-          <View style={styles.logForm}>
-            <TextField
-              label="Weight (kg)"
-              placeholder="70.5"
-              keyboardType="numeric"
-              value={weightInput}
-              onChangeText={setWeightInput}
-            />
-            <Button label="Save" size="sm" onPress={handleLogWeight} />
-          </View>
-        ) : null}
-      </Card>
-
-      {/* Log measurements */}
-      <Card>
-        <Pressable onPress={() => setShowLogMeasurement(!showLogMeasurement)}>
-          <ThemedText type="h3">Log Measurements</ThemedText>
-        </Pressable>
-        {showLogMeasurement ? (
-          <View style={styles.logForm}>
-            <View style={styles.measurementGrid}>
-              {[
-                { key: 'waist', label: 'Waist (cm)' },
-                { key: 'chest', label: 'Chest (cm)' },
-                { key: 'arms', label: 'Arms (cm)' },
-                { key: 'thighs', label: 'Thighs (cm)' },
-                { key: 'hips', label: 'Hips (cm)' },
-                { key: 'neck', label: 'Neck (cm)' },
-                { key: 'bodyFat', label: 'Body Fat %' },
-              ].map(({ key, label }) => (
-                <TextField
-                  key={key}
-                  label={label}
-                  placeholder="—"
-                  keyboardType="numeric"
-                  value={measurementInputs[key as keyof typeof measurementInputs]}
-                  onChangeText={(v) =>
-                    setMeasurementInputs((prev) => ({ ...prev, [key]: v }))
-                  }
-                />
-              ))}
+        {/* Level Section */}
+        <View style={[styles.levelCard, { backgroundColor: colors.card }]}>
+          <View style={styles.levelHeader}>
+            <View>
+              <ThemedText type="small" themeColor="textMuted">YOUR LEVEL</ThemedText>
+              <ThemedText type="h2" style={{ color: '#CD7F32' }}>Bronze</ThemedText>
             </View>
-            <Button label="Save Measurements" size="sm" onPress={handleLogMeasurement} />
+            <TouchableOpacity style={styles.compareBtn}>
+              <ThemedText type="small" themeColor="primary">Compare</ThemedText>
+              <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
+            </TouchableOpacity>
           </View>
-        ) : null}
-      </Card>
 
-      {/* Recent weight entries */}
-      {weightHistory.length > 0 ? (
-        <Card>
-          <ThemedText type="h3">Recent Weigh-ins</ThemedText>
-          {weightHistory.slice(0, 7).map((entry) => (
-            <View key={entry.id} style={styles.entryRow}>
-              <ThemedText type="default">{entry.weightKg} kg</ThemedText>
-              <ThemedText type="small" themeColor="textMuted">
-                {new Date(entry.recordedAt).toLocaleDateString()}
-              </ThemedText>
-            </View>
-          ))}
-        </Card>
-      ) : null}
+          {/* Muscle Map */}
+          <MuscleMap muscles={MOCK_MUSCLES} />
 
-      {weightHistory.length === 0 && !showLogWeight ? (
-        <Card>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.emptyText}>
-            Start logging your weight to see trends over time.
-          </ThemedText>
-        </Card>
-      ) : null}
-    </Screen>
+          {/* Level Badge */}
+          <LevelBadge gold={goldCount} bronze={bronzeCount} wood={woodCount} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  statsRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
+  container: {
+    flex: 1,
   },
-  logForm: {
-    gap: Spacing.three,
-    marginTop: Spacing.three,
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
+    gap: 16,
   },
-  measurementGrid: {
-    gap: Spacing.three,
-  },
-  entryRow: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.one,
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 16,
   },
-  emptyText: {
-    textAlign: 'center',
-    paddingVertical: Spacing.four,
+  title: {
+    letterSpacing: 2,
+  },
+  levelCard: {
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 16,
+  },
+  levelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  compareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 8,
+    borderRadius: 8,
   },
 });
