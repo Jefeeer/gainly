@@ -61,7 +61,6 @@ export default function RootLayout() {
         <Stack.Screen name="workout/active" options={{ headerShown: true, title: 'Active Workout' }} />
         <Stack.Screen name="attribution" options={{ headerShown: true, title: 'Open Source Licenses' }} />
       </Stack>
-        </Stack>
       </View>
     </AuthProvider>
   );
