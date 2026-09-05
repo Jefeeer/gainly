@@ -60,7 +60,7 @@ export default function PersonalRecordsScreen() {
                     </ThemedText>
                   </View>
                 ))}
-                <ThemedText type="small" themeColor="textMuted}>
+                <ThemedText type="small" themeColor="textMuted">
                   Last: {new Date(prs[0].achievedAt).toLocaleDateString()}
                 </ThemedText>
               </Card>
