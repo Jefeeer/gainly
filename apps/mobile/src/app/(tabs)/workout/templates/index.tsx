@@ -4,20 +4,18 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
-
-import { Button } from '@/components/button';
-import { Card } from '@/components/card';
-import { EmptyState } from '@/components/empty-state';
-import { Screen } from '@/components/screen';
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Alert, ScrollView, StyleSheet, View, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/use-theme';
+import { ThemedText } from '@/components/themed-text';
 import { useTemplates, type WorkoutTemplate } from '@/stores/templates';
 import { useActiveWorkout } from '@/stores/active-workout';
 
 export default function TemplatesScreen() {
-  const theme = useTheme();
+  const { colors } = useTheme();
+  const router = useRouter();
   const { templates, initPresets, deleteTemplate, duplicateTemplate } = useTemplates();
   const { startWorkout, addExercise, addSet, hasActiveWorkout } = useActiveWorkout();
   const [showCreate, setShowCreate] = useState(false);
@@ -33,7 +31,6 @@ export default function TemplatesScreen() {
       return;
     }
 
-    // Start workout and populate exercises from template
     startWorkout({ name: template.name, templateId: template.id });
     for (const ex of template.exercises) {
       addExercise({ exerciseId: ex.exerciseId, exerciseName: ex.exerciseName });
@@ -45,6 +42,7 @@ export default function TemplatesScreen() {
         }
       }
     }
+    router.push('/workout/active');
   }
 
   function handleDuplicate(template: WorkoutTemplate) {
@@ -65,165 +63,249 @@ export default function TemplatesScreen() {
     ]);
   }
 
-  function handleCreate() {
-    if (newName.trim()) {
-      useTemplates.getState().createTemplate({ name: newName.trim() });
-      setNewName('');
-      setShowCreate(false);
-    }
-  }
-
-  const renderTemplate = ({ item }: { item: WorkoutTemplate }) => (
-    <Card style={styles.templateCard}>
-      <View style={styles.templateHeader}>
-        <View style={styles.templateInfo}>
-          <ThemedText type="h3">{item.name}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {item.exercises.length} exercises · {item.exercises.reduce((s, e) => s + e.suggestedSets, 0)} sets
-          </ThemedText>
-          {item.description ? (
-            <ThemedText type="small" themeColor="textMuted">
-              {item.description}
-            </ThemedText>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Exercise preview */}
-      <View style={styles.exerciseList}>
-        {item.exercises.slice(0, 3).map((ex) => (
-          <ThemedText key={ex.id} type="small" themeColor="textSecondary">
-            {ex.exerciseName} — {ex.suggestedSets}×{ex.suggestedReps}
-          </ThemedText>
-        ))}
-        {item.exercises.length > 3 ? (
-          <ThemedText type="small" themeColor="textMuted">
-            +{item.exercises.length - 3} more
-          </ThemedText>
-        ) : null}
-      </View>
-
-      {/* Actions */}
-      <View style={styles.actions}>
-        <Button
-          label="Start"
-          size="sm"
-          onPress={() => handleStartFromTemplate(item)}
-        />
-        <Pressable
-          onPress={() => handleDuplicate(item)}
-          style={styles.actionLink}
-        >
-          <ThemedText type="small" themeColor="primary">Duplicate</ThemedText>
-        </Pressable>
-        {!item.isPreset ? (
-          <Pressable
-            onPress={() => handleDelete(item)}
-            style={styles.actionLink}
-          >
-            <ThemedText type="small" themeColor="error">Delete</ThemedText>
-          </Pressable>
-        ) : null}
-      </View>
-    </Card>
-  );
+  const getTemplateColor = (index: number) => {
+    const colors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
+    return colors[index % colors.length];
+  };
 
   return (
-    <Screen>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {/* Header */}
       <View style={styles.header}>
-        <ThemedText type="h1">Templates</ThemedText>
-        <Button
-          label="+ New"
-          size="sm"
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <ThemedText type="h2">Templates</ThemedText>
+        <TouchableOpacity 
+          style={[styles.addBtn, { backgroundColor: colors.primary }]}
           onPress={() => setShowCreate(!showCreate)}
-        />
+        >
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
 
-      {/* Create new template */}
-      {showCreate ? (
-        <Card style={styles.createCard}>
-          <ThemedText type="h3">New Template</ThemedText>
-          <View style={styles.createRow}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Create New */}
+        {showCreate && (
+          <View style={[styles.createCard, { backgroundColor: colors.surface }]}>
+            <ThemedText type="h3">New Template</ThemedText>
             <View style={styles.createInput}>
-              <ThemedText type="small" themeColor="textSecondary">Name</ThemedText>
-              <ThemedText
+              <Ionicons name="create-outline" size={20} color={colors.textMuted} />
+              <ThemedText 
                 type="default"
-                style={[styles.nameInput, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}
+                style={[styles.nameInput, { color: colors.text }]}
+                onPress={() => {/* Would open modal */}}
               >
-                {newName || ''}
+                {newName || 'Template name...'}
               </ThemedText>
             </View>
-            <Button label="Create" size="sm" onPress={handleCreate} />
+            <TouchableOpacity style={[styles.createBtn, { backgroundColor: colors.primary }]}>
+              <ThemedText type="smallBold" style={{ color: '#fff' }}>Create</ThemedText>
+            </TouchableOpacity>
           </View>
-        </Card>
-      ) : null}
+        )}
 
-      {/* Template list */}
-      <FlatList
-        data={templates}
-        keyExtractor={(item) => item.id}
-        renderItem={renderTemplate}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <EmptyState
-            title="No Templates Yet"
-            message="Create a template to save your favorite workouts."
-          />
-        }
-      />
-    </Screen>
+        {/* Templates List */}
+        <View style={styles.templatesList}>
+          {templates.map((template, index) => (
+            <TouchableOpacity 
+              key={template.id}
+              style={[styles.templateCard, { backgroundColor: colors.surface }]}
+              onPress={() => router.push(`/workout/templates/${template.id}`)}
+            >
+              {/* Template Header */}
+              <View style={styles.templateHeader}>
+                <View style={[styles.templateIcon, { backgroundColor: getTemplateColor(index) + '15' }]}>
+                  <Ionicons 
+                    name={template.isPreset ? 'star' : 'document-text'} 
+                    size={20} 
+                    color={getTemplateColor(index)} 
+                  />
+                </View>
+                <View style={styles.templateInfo}>
+                  <View style={styles.templateTitleRow}>
+                    <ThemedText type="defaultBold">{template.name}</ThemedText>
+                    {template.isPreset && (
+                      <View style={[styles.presetBadge, { backgroundColor: '#F59E0B' + '15' }]}>
+                        <ThemedText type="small" style={{ color: '#F59E0B' }}>Preset</ThemedText>
+                      </View>
+                    )}
+                  </View>
+                  <ThemedText type="small" themeColor="textMuted">
+                    {template.exercises.length} exercises · {template.exercises.reduce((s, e) => s + e.suggestedSets, 0)} sets
+                  </ThemedText>
+                </View>
+              </View>
+
+              {/* Exercise Preview */}
+              <View style={styles.exercisePreview}>
+                {template.exercises.slice(0, 3).map((ex) => (
+                  <View key={ex.id} style={styles.exerciseItem}>
+                    <View style={[styles.exerciseDot, { backgroundColor: getTemplateColor(index) }]} />
+                    <ThemedText type="small" themeColor="textSecondary" style={{ flex: 1 }}>
+                      {ex.exerciseName}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textMuted">
+                      {ex.suggestedSets}×{ex.suggestedReps}
+                    </ThemedText>
+                  </View>
+                ))}
+                {template.exercises.length > 3 && (
+                  <ThemedText type="small" themeColor="textMuted" style={{ marginLeft: 8 }}>
+                    +{template.exercises.length - 3} more
+                  </ThemedText>
+                )}
+              </View>
+
+              {/* Actions */}
+              <View style={styles.actions}>
+                <TouchableOpacity 
+                  style={[styles.startBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => handleStartFromTemplate(template)}
+                >
+                  <Ionicons name="play" size={16} color="#fff" />
+                  <ThemedText type="smallBold" style={{ color: '#fff' }}>Start</ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { backgroundColor: colors.background }]}
+                  onPress={() => handleDuplicate(template)}
+                >
+                  <Ionicons name="copy-outline" size={16} color={colors.text} />
+                </TouchableOpacity>
+                
+                {!template.isPreset && (
+                  <TouchableOpacity 
+                    style={[styles.actionBtn, { backgroundColor: '#EF4444' + '10' }]}
+                    onPress={() => handleDelete(template)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  addBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
   },
   createCard: {
-    gap: Spacing.two,
-  },
-  createRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    alignItems: 'flex-end',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 24,
+    gap: 12,
   },
   createInput: {
-    flex: 1,
-    gap: Spacing.one,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
   },
   nameInput: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
+    flex: 1,
   },
-  list: {
-    gap: Spacing.three,
+  createBtn: {
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  templatesList: {
+    gap: 16,
+    paddingBottom: 32,
   },
   templateCard: {
-    gap: Spacing.two,
+    padding: 20,
+    borderRadius: 20,
   },
   templateHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 16,
+  },
+  templateIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   templateInfo: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
-  exerciseList: {
-    gap: 2,
+  templateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  presetBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  exercisePreview: {
+    gap: 8,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+  },
+  exerciseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exerciseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    marginTop: Spacing.one,
+    gap: 12,
   },
-  actionLink: {
-    paddingVertical: Spacing.one,
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  actionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
