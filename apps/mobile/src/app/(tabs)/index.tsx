@@ -1,12 +1,48 @@
 import { Card } from '@/components/card';
+import { DashboardSkeleton } from '@/components/skeleton';
+import { ErrorState } from '@/components/error-state';
 import { EmptyState } from '@/components/empty-state';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 
-const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+});
 
-export default function HomeScreen() {
+type HomeScreenProps = {
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  userName?: string;
+  streak?: number;
+  todayWorkout?: { name: string; exercises: number; duration: string } | null;
+  calories?: { consumed: number; goal: number } | null;
+};
+
+export default function HomeScreen({
+  loading = false,
+  error = null,
+  onRetry,
+}: HomeScreenProps) {
   const today = WEEKDAY_FORMATTER.format(new Date());
+
+  if (loading) {
+    return (
+      <Screen>
+        <DashboardSkeleton />
+      </Screen>
+    );
+  }
+
+  if (error) {
+    return (
+      <Screen centered>
+        <ErrorState message={error} onRetry={onRetry} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>

@@ -1,9 +1,40 @@
 import { Card } from '@/components/card';
 import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { CardSkeleton } from '@/components/skeleton';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 
-export default function ProfileScreen() {
+type ProfileProps = {
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+};
+
+export default function ProfileScreen({
+  loading = false,
+  error = null,
+  onRetry,
+}: ProfileProps) {
+  if (loading) {
+    return (
+      <Screen>
+        <ThemedText type="h1">Profile</ThemedText>
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+      </Screen>
+    );
+  }
+
+  if (error) {
+    return (
+      <Screen centered>
+        <ErrorState message={error} onRetry={onRetry} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <ThemedText type="h1">Profile</ThemedText>
