@@ -5,6 +5,7 @@ export default function WorkoutLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ title: 'Workout' }} />
       <Stack.Screen name="templates/index" options={{ title: 'Templates' }} />
+      <Stack.Screen name="templates/[id]" options={{ title: 'Edit Template' }} />
       <Stack.Screen name="programs/index" options={{ title: 'Programs' }} />
       <Stack.Screen name="search/index" options={{ title: 'Find Exercise' }} />
       <Stack.Screen name="search/[slug]" options={{ title: 'Exercise Detail' }} />
