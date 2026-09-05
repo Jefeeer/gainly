@@ -4,11 +4,11 @@
  */
 
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
+/**
+ * Always returns dark theme for premium fitness app look.
+ * The dark-first design is intentional — see design-system.md §51.
+ */
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? 'dark' : 'light';
-
-  return Colors[theme];
+  return Colors.dark;
 }

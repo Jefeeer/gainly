@@ -1,5 +1,5 @@
 import { Tabs, useRouter, usePathname } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -26,11 +26,11 @@ export default function AppTabs() {
           return (
             <Pressable
               key={key}
-              style={styles.centerButton}
+              style={styles.centerButtonWrapper}
               onPress={() => navigate(`/${key}` as any)}
             >
               <View style={[styles.centerButtonInner, { backgroundColor: colors.primary }]}>
-                <Ionicons name={icon} size={28} color={colors.onPrimary} />
+                <Ionicons name={icon} size={26} color={colors.onPrimary} />
               </View>
             </Pressable>
           );
@@ -47,9 +47,7 @@ export default function AppTabs() {
               size={22}
               color={isActive ? colors.primary : colors.textMuted}
             />
-            <View style={[styles.labelContainer, isActive && styles.activeLabelContainer]}>
-              <View style={[styles.activeLabel, { backgroundColor: colors.primary }]} />
-            </View>
+            <View style={[styles.indicator, isActive && { backgroundColor: colors.primary }]} />
           </Pressable>
         );
       })}
@@ -60,41 +58,37 @@ export default function AppTabs() {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'flex-end',
-    paddingBottom: 24,
-    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    paddingTop: 12,
     borderTopWidth: 1,
+    height: Platform.OS === 'ios' ? 88 : 72,
   },
   tab: {
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
     flex: 1,
+    gap: 6,
   },
-  labelContainer: {
+  indicator: {
     height: 3,
     width: 20,
     borderRadius: 2,
-    overflow: 'hidden',
-  },
-  activeLabelContainer: {
     backgroundColor: 'transparent',
   },
-  activeLabel: {
+  centerButtonWrapper: {
     flex: 1,
-    borderRadius: 2,
-  },
-  centerButton: {
-    top: -20,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 0,
   },
   centerButtonInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: -20,
     shadowColor: '#C8FF00',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
