@@ -7,9 +7,13 @@ import { Button } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/stores/auth';
 
 export default function WelcomeScreen() {
   const scheme = useColorScheme();
+  const isDemoMode = useAuth((s) => s.isDemoMode);
+  const demoSignIn = useAuth((s) => s.demoSignIn);
+
   const mark =
     scheme === 'dark'
       ? require('@/assets/images/splash-icon-dark.png')
@@ -26,11 +30,17 @@ export default function WelcomeScreen() {
           Your progress starts with your first rep.
         </ThemedText>
 
-        <Button label="Get Started" href="/sign-up" />
+        <Button label="Get Started" href="/(auth)/sign-up" />
 
-        <Link href="/sign-in" asChild>
+        {isDemoMode ? (
+          <Button label="Try Demo Mode" variant="secondary" onPress={demoSignIn} />
+        ) : null}
+
+        <Link href="/(auth)/sign-in" asChild>
           <Pressable>
-            <ThemedText type="link">Sign In</ThemedText>
+            <ThemedText type="link" themeColor="textSecondary">
+              Sign In
+            </ThemedText>
           </Pressable>
         </Link>
       </SafeAreaView>

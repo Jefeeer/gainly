@@ -1,28 +1,76 @@
+import { Alert, Linking, Pressable, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
-import { Pressable, StyleSheet } from 'react-native';
 
+import { Button } from '@/components/button';
 import { Card } from '@/components/card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/stores/auth';
 
 /**
- * Account/Units/Notifications/Privacy/Connected Apps/Theme/Subscription/Help/Logout/Delete
- * Account are real menu items per docs/navigation.md but each needs a signed-in user or a write
- * action - out of scope until auth/data land (G-33 is structure + empty states only). Only About
- * is wired since it's pure static content (the CC BY-SA attribution, G-12).
+ * Settings screen — account, units, notifications, privacy, etc.
+ * Per navigation.md §4: "About" is wired (CC BY-SA attribution); others need auth.
  */
 export default function SettingsScreen() {
+  const signOut = useAuth((s) => s.signOut);
+  const user = useAuth((s) => s.user);
+  const isDemoMode = useAuth((s) => s.isDemoMode);
+
+  function handleLogout() {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: () => signOut(),
+      },
+    ]);
+  }
+
   return (
     <Screen>
       <ThemedText type="h1">Settings</ThemedText>
+
+      {/* Account info */}
+      {user ? (
+        <Card>
+          <ThemedText type="small" themeColor="textSecondary">
+            Signed in as
+          </ThemedText>
+          <ThemedText type="bodyStrong">
+            {user.displayName ?? user.email ?? 'Unknown'}
+          </ThemedText>
+          {isDemoMode ? (
+            <ThemedText type="small" themeColor="textMuted">
+              Demo Mode
+            </ThemedText>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card>
-        <Link href="/profile/settings/about" asChild>
+        <Link href="/(tabs)/profile/settings/about" asChild>
           <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
-            <ThemedText type="default">About</ThemedText>
+            <ThemedText type="default">About Gainly</ThemedText>
           </Pressable>
         </Link>
       </Card>
+
+      <Card>
+        <Link href="/attribution" asChild>
+          <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+            <ThemedText type="default">Open Source Licenses</ThemedText>
+          </Pressable>
+        </Link>
+      </Card>
+
+      {/* Logout */}
+      <Button
+        label="Sign Out"
+        variant="destructive"
+        onPress={handleLogout}
+      />
     </Screen>
   );
 }

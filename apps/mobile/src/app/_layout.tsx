@@ -1,35 +1,61 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+/**
+ * Root layout — auth/onboarding gating per navigation.md §1.
+ *
+ * "Auth/onboarding gating is done once in app/_layout.tsx:
+ *  no session → (auth); session but onboarding_completed_at is null → (onboarding); else (tabs)."
+ *
+ * Three route groups, selected by a single Redirect based on auth state.
+ * SplashScreen handles the initial load; this layout only routes after auth is resolved.
+ */
+
+import { Redirect, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { AuthProvider } from '@/providers/auth-provider';
+import { useAuth } from '@/stores/auth';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
+function AuthGate() {
+  const status = useAuth((s) => s.status);
+  const user = useAuth((s) => s.user);
 
   useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
+    // Hide splash once auth state is resolved (not loading)
+    if (status !== 'loading') {
+      SplashScreen.hideAsync();
+    }
+  }, [status]);
 
+  // Still determining session — keep splash visible
+  if (status === 'loading') return null;
+
+  // Unauthenticated → auth stack
+  if (status === 'unauthenticated') {
+    return <Redirect href="/(auth)/welcome" />;
+  }
+
+  // Authenticated but onboarding not completed → onboarding stack
+  if (user && !user.onboardingCompletedAt) {
+    return <Redirect href="/(onboarding)/goal" />;
+  }
+
+  // Authenticated and onboarded → main app
+  return <Redirect href="/(tabs)" />;
+}
+
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: theme.background },
-          headerTintColor: theme.text,
-          headerShadowVisible: false,
-        }}>
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="workout/active" options={{ title: 'Active Workout' }} />
-        <Stack.Screen name="attribution" options={{ title: 'Open Source Licenses' }} />
+    <AuthProvider>
+      <AuthGate />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(onboarding)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="workout/active" options={{ headerShown: true, title: 'Active Workout' }} />
+        <Stack.Screen name="attribution" options={{ headerShown: true, title: 'Open Source Licenses' }} />
       </Stack>
-    </ThemeProvider>
+    </AuthProvider>
   );
 }
